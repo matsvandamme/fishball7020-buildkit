@@ -144,6 +144,23 @@ echo "=== [7/7] Packaging SD-card files ==="
     rm -f fsbl.elf system_top.bit u-boot.elf boot.bif  # intermediate, not needed on the SD card
 )
 
+echo "=== Sanity-checking output files ==="
+for f in BOOT.bin devicetree.dtb uEnv.txt uImage uramdisk.image.gz; do
+    path="$OUT_DIR/$f"
+    if [ ! -s "$path" ]; then
+        echo "ERROR: $path is missing or empty - a step above silently produced nothing usable." >&2
+        exit 1
+    fi
+done
+# BOOT.bin (FSBL + bitstream + U-Boot) should always be multiple MB; a
+# truncated file here usually means bootgen failed partway without a
+# nonzero exit code.
+boot_bin_size=$(stat -c %s "$OUT_DIR/BOOT.bin")
+if [ "$boot_bin_size" -lt 1000000 ]; then
+    echo "ERROR: $OUT_DIR/BOOT.bin is only $boot_bin_size bytes - expected several MB. bootgen likely failed silently." >&2
+    exit 1
+fi
+
 echo
 echo "=== Done. SD-card files are in: $OUT_DIR ==="
 ls -la "$OUT_DIR"

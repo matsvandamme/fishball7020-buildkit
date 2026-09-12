@@ -1,0 +1,37 @@
+name: Verify patches apply cleanly
+
+# This does NOT run the actual firmware build (that needs Vivado/Vitis,
+# which can't reasonably run on a hosted GitHub Actions runner). It only
+# checks the cheap, fast thing a hosted runner *can* verify: that
+# setup.sh's clone-and-patch step still works. That catches upstream
+# rewriting/force-pushing its history (setup.sh pins an exact commit, so
+# this mainly guards against that commit disappearing) and catches any
+# new patch in patches/ that doesn't actually apply - without needing an
+# 80GB+ Vivado install in CI.
+
+on:
+  push:
+    paths:
+      - "firmware/patches/**"
+      - "firmware/scripts/setup.sh"
+      - ".github/workflows/verify-patches.yml"
+  pull_request:
+    paths:
+      - "firmware/patches/**"
+      - "firmware/scripts/setup.sh"
+  schedule:
+    # Weekly, so upstream disappearing/force-pushing is caught even when
+    # nobody's actively touching this repo.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run setup.sh (clone upstream + apply patches)
+        run: ./firmware/scripts/setup.sh
+      - name: Confirm the device tree patch actually landed
+        run: |
+          test -f firmware/src/linux/arch/arm/boot/dts/zynq-pluto-sdr-fishball.dts

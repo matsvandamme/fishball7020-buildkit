@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/badge/toolchain-Vivado%2FVitis%202022.2-orange" alt="Toolchain: Vivado/Vitis 2022.2">
   <img src="https://img.shields.io/badge/host%20OS-Ubuntu%2022.04%20LTS-e95420" alt="Host OS: Ubuntu 22.04 LTS">
   <img src="https://img.shields.io/badge/license-MIT%20%2B%20GPL%20(mixed)-lightgrey" alt="License: MIT + GPL (mixed)">
+  <a href="../../actions/workflows/verify-patches.yml"><img src="https://github.com/matsvandamme/fishball7020-buildkit/actions/workflows/verify-patches.yml/badge.svg" alt="Verify patches CI status"></a>
 </p>
 
 <p align="center"><img src="docs/img/board.jpg" alt="Fishball7020 / PlutoSky SDR board — Zynq XC7Z020 with AD9361, 4x SMA connectors, Ethernet and USB" width="480"></p>
@@ -44,6 +45,7 @@ required either way.
 
 ## Table of contents
 
+- [Before you start: back up your stock firmware](#before-you-start-back-up-your-stock-firmware)
 - [Prerequisites](#prerequisites)
 - [Repository layout](#repository-layout)
 - [1. Install Vivado/Vitis 2022.2](#1-install-vivadovitis-2022-2)
@@ -58,6 +60,27 @@ required either way.
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist)
 - [License](#license)
+
+## Before you start: back up your stock firmware
+
+This devkit replaces the FPGA bitstream, bootloader, kernel, and root
+filesystem on your board — a bad build (or a bad flash) can leave it
+unable to boot. Before you touch anything:
+
+1. **Image the SD card your board actually shipped with**, file-for-file,
+   onto your computer (just copy the 5 files off the FAT32 partition —
+   `BOOT.bin`, `devicetree.dtb`, `uEnv.txt`, `uImage`, `uramdisk.image.gz`
+   — to a folder you'll keep). That's your known-good fallback: if a
+   custom build doesn't boot, re-copying these 5 original files back onto
+   the card restores exactly the factory state.
+2. If you only have one SD card, **buy a second one** before
+   experimenting — microSD cards are cheap, and it means you're never in
+   a position where your only fallback and your only test card are the
+   same physical object.
+3. **DFU (see step 6B) is not a rescue path.** If a bad `BOOT.bin` won't
+   boot, U-Boot never starts DFU mode either, so pushing new files over
+   USB isn't possible — an SD card swap back to the stock files (or a
+   known-good build) is the only way back at that point.
 
 ## Prerequisites
 
@@ -334,13 +357,25 @@ ideal for iterating on the kernel or rootfs without touching the SD card.
 
 ## 7. Verify your build is actually running
 
-Connect over USB and open the serial console:
+**Which USB port is which:** this board exposes two completely different
+USB connections that are easy to mix up:
+
+| Port | Enumerates as | What it's for |
+|---|---|---|
+| The board's own USB-OTG port | `0456:b673` (Analog Devices/ADALM-PLUTO), `/dev/ttyACM0` | Normal operation: network-over-USB (`192.168.2.1`), the board's own USB console |
+| The debug header (if populated) | FTDI `0403:6010` dual UART, `/dev/ttyUSB0` **and** `/dev/ttyUSB1` | JTAG-over-UART + a second UART console — only relevant if you're debugging at the FSBL/U-Boot level before the OTG port is even up |
+
+For everyday use, connect to the board's normal USB port:
 
 ```bash
 screen /dev/ttyACM0 115200
 ```
 (Press Enter for a login prompt: `root`, no password. To exit `screen`
 cleanly: `Ctrl-A` then `k`, then `y`.)
+
+If you're on the debug header instead, try `/dev/ttyUSB1` first, then
+`/dev/ttyUSB0` if that one's silent or garbled — which channel carries
+the console vs. JTAG depends on the header wiring.
 
 Then confirm your build, not stock/vendor firmware, is running:
 

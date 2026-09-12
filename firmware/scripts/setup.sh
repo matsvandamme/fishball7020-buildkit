@@ -14,20 +14,47 @@ SRC_DIR="$FW1_DIR/src"
 
 UPSTREAM_URL="https://github.com/Xiaozhang-code-cloud/Fish-Wan-plutosdr-fw-7020-SDR.git"
 
+# Pinned to the exact commit every patch/comparison in this repo was
+# verified against. Upstream's history has been squashed before (see the
+# firmware README), so tracking a branch HEAD instead of a fixed commit
+# risks silently building against different code than what was actually
+# tested - or the patches failing to apply at all with no clear reason why.
+UPSTREAM_COMMIT="95aad369f0f3f4ae852bea94d980cc2db90728a2"
+
 if [ -d "$SRC_DIR/.git" ]; then
     echo "=== $SRC_DIR already exists - skipping clone. Delete it first for a clean setup. ==="
+    current="$(cd "$SRC_DIR" && git rev-parse HEAD)"
+    if [ "$current" != "$UPSTREAM_COMMIT" ]; then
+        echo "WARNING: $SRC_DIR is at $current, not the pinned $UPSTREAM_COMMIT."
+        echo "         Patches may fail to apply or apply against different code."
+    fi
 else
     echo "=== Cloning $UPSTREAM_URL ==="
     git clone "$UPSTREAM_URL" "$SRC_DIR"
+    echo "=== Checking out pinned commit $UPSTREAM_COMMIT ==="
+    (cd "$SRC_DIR" && git checkout --quiet "$UPSTREAM_COMMIT") || {
+        echo "ERROR: pinned commit $UPSTREAM_COMMIT not found in $UPSTREAM_URL." >&2
+        echo "       Upstream may have force-pushed/rewritten its history -" >&2
+        echo "       see the firmware README for what to do next." >&2
+        exit 1
+    }
 fi
 
 cd "$SRC_DIR"
 echo "=== Applying patches ==="
 for p in "$FW1_DIR"/patches/*.patch; do
     echo "  -> $(basename "$p")"
-    git apply --check "$p" 2>/dev/null && git apply "$p" || {
-        echo "     already applied or conflicts - skipping"
-    }
+    if git apply --check "$p" 2>/dev/null; then
+        git apply "$p"
+    elif git apply --check --reverse "$p" 2>/dev/null; then
+        echo "     already applied - skipping"
+    else
+        echo "ERROR: $(basename "$p") does not apply cleanly, and isn't already applied." >&2
+        echo "       $SRC_DIR is not in the state this patch expects - if you didn't" >&2
+        echo "       edit src/ by hand, this likely means upstream has drifted from" >&2
+        echo "       the pinned commit ($UPSTREAM_COMMIT)." >&2
+        exit 1
+    fi
 done
 
 echo

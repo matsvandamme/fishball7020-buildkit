@@ -10,10 +10,13 @@ contributions are welcome, but keep these in mind:
   for the format/style — `git diff` against a clean `setup.sh` checkout,
   or `git diff --cached` for new files) rather than committing the
   generated source tree itself.
-- **Test before opening a PR.** There's no CI for this repo (Vivado
-  can't reasonably run in a hosted runner), so "I ran `build_all.sh`
-  end-to-end and flashed the result" is the bar — mention what you tested
-  in the PR description.
+- **Test before opening a PR.** CI only verifies that `setup.sh` still
+  clones upstream and applies `patches/` cleanly — it can't run the
+  actual firmware build (Vivado can't reasonably run in a hosted
+  runner). So for anything touching `build_all.sh`, the HDL, or the
+  patches themselves, "I ran `build_all.sh` end-to-end and flashed the
+  result" is the real bar — mention what you tested in the PR
+  description.
 - **Scripts over documentation-only claims.** If you're fixing a build
   bug, prefer fixing it in `firmware/scripts/build_all.sh` (or the
   relevant `.tcl`) over just documenting a manual workaround, so the next
