@@ -23,7 +23,7 @@ required either way.
 |---|---|
 | **Board** | Zynq-7020 (XC7Z020-CLG400) + AD9361, 2×2 MIMO RF front end |
 | **Toolchain** | Xilinx Vivado/Vitis **2022.2** (free WebPACK license — no purchase needed) |
-| **Host OS** | Ubuntu 22.04–26.04 (this repo's `tools/env-vivado.sh` fixes a library gap on 24.04+) |
+| **Host OS** | **Ubuntu 22.04 LTS** — the version Vivado/Vitis 2022.2 officially supports |
 | **Firmware base** | Linux 5.15, U-Boot, Buildroot — a Zynq-7020 port of ADI's `plutosdr-fw` |
 | **Verified against real hardware** | `devicetree.dtb` byte-identical; kernel, bootloader, rootfs content-identical — see [Provenance](#how-this-repo-came-to-exist) |
 
@@ -51,7 +51,7 @@ required either way.
   (any size — the image is small) with a USB card reader, **or** just the
   USB cable if you'll flash via DFU.
 
-**Software** (Ubuntu; install before step 1):
+**Software** (Ubuntu 22.04 LTS; install before step 1):
 
 ```bash
 sudo apt update
@@ -138,13 +138,13 @@ license** — no purchase or license file needed.
 
 **Why `tools/env-vivado.sh` exists:** Vivado 2022.2's bundled binaries are
 linked against `libtinfo.so.5`, `libncurses.so.5`, and
-`libssl.so.1.1`/`libcrypto.so.1.1` — libraries recent Ubuntu releases
-(24.04+) no longer ship. This script prepends locally-vendored copies of
-exactly those libraries to `LD_LIBRARY_PATH` before sourcing Vivado's own
-`settings64.sh`, without touching anything system-wide. From here on,
-**always run `source tools/env-vivado.sh` instead of Vivado's own
-`settings64.sh`**, in any shell where you'll run `vivado`, `xsct`, or
-`bootgen` by hand.
+`libssl.so.1.1`/`libcrypto.so.1.1` — legacy compatibility libraries not
+present in a default Ubuntu 22.04 install. This script prepends
+locally-vendored copies of exactly those libraries to `LD_LIBRARY_PATH`
+before sourcing Vivado's own `settings64.sh`, without touching anything
+system-wide. From here on, **always run `source tools/env-vivado.sh`
+instead of Vivado's own `settings64.sh`**, in any shell where you'll run
+`vivado`, `xsct`, or `bootgen` by hand.
 
 ## 2. Get the firmware source
 
