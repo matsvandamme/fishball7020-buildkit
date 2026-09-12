@@ -5,14 +5,14 @@
 > verified to be as close to bit-perfect as is possible from public sources.
 > See [How this repo came to exist](#how-this-repo-came-to-exist).
 
-# Fishball7020 Buildkit
+# Fishball7020 FPGA Devkit
 
 <p align="center">
   <img src="https://img.shields.io/badge/board-Zynq%20XC7Z020%20%2B%20AD9361-blue" alt="Board: Zynq XC7Z020 + AD9361">
   <img src="https://img.shields.io/badge/toolchain-Vivado%2FVitis%202022.2-orange" alt="Toolchain: Vivado/Vitis 2022.2">
   <img src="https://img.shields.io/badge/host%20OS-Ubuntu%2022.04%20LTS-e95420" alt="Host OS: Ubuntu 22.04 LTS">
   <img src="https://img.shields.io/badge/license-MIT%20%2B%20GPL%20(mixed)-lightgrey" alt="License: MIT + GPL (mixed)">
-  <a href="../../actions/workflows/verify-patches.yml"><img src="https://github.com/matsvandamme/fishball7020-buildkit/actions/workflows/verify-patches.yml/badge.svg" alt="Verify patches CI status"></a>
+  <a href="../../actions/workflows/verify-patches.yml"><img src="https://github.com/matsvandamme/fishball7020-fpga-devkit/actions/workflows/verify-patches.yml/badge.svg" alt="Verify patches CI status"></a>
 </p>
 
 <p align="center"><img src="docs/img/board.jpg" alt="Fishball7020 / PlutoSky SDR board — Zynq XC7Z020 with AD9361, 4x SMA connectors, Ethernet and USB" width="480"></p>
