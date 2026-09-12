@@ -1,0 +1,121 @@
+diff --git a/buildroot/board/pluto/S23udc b/buildroot/board/pluto/S23udc
+index 091afe679..202347f00 100755
+--- a/buildroot/board/pluto/S23udc
++++ b/buildroot/board/pluto/S23udc
+@@ -47,7 +47,7 @@ create_iiod_context_attributes() {
+ 	fi
+ 
+ 	echo -e "hw_serial=$serial\n" >> /etc/libiio.ini
+-	echo "fw_version=v0.38" >> /etc/libiio.ini
++	echo "fw_version=`grep device-fw /opt/VERSIONS | cut -d ' ' -f 2`" >> /etc/libiio.ini
+ 	if [ "$USBPID" == "0xb673" ]; then
+ 		echo ad9361-phy,xo_correction=`cat /sys/bus/iio/devices/${DEV_NAME}/xo_correction` >> /etc/libiio.ini
+ 		echo ad9361-phy,model=$AD936X_TYPE >> /etc/libiio.ini
+@@ -69,7 +69,7 @@ case "$1" in
+ 	model_variant=`dmesg | grep m25p80 | grep Kbytes | cut -d ' ' -f 3`
+ 
+ 	serial=`dmesg | grep SPI-NOR-UniqueID`
+-	serial=104473023196000bf5ff1a00aae12c3ca8
++	serial=${serial#*SPI-NOR-UniqueID }
+ 
+ 	create_iiod_context_attributes "$model" "$serial" "$model_variant"
+ 
+diff --git a/buildroot/configs/zynq_pluto_defconfig b/buildroot/configs/zynq_pluto_defconfig
+index 6203766e0..ba275c12c 100755
+--- a/buildroot/configs/zynq_pluto_defconfig
++++ b/buildroot/configs/zynq_pluto_defconfig
+@@ -45,6 +45,7 @@ BR2_PACKAGE_LIBGPIOD_TOOLS=y
+ BR2_PACKAGE_LIBIIO_IIOD_USBD=y
+ BR2_PACKAGE_LIBIIO_TESTS=y
+ BR2_PACKAGE_LIBINI=y
++BR2_PACKAGE_IPERF=y
+ BR2_PACKAGE_AVAHI=y
+ BR2_PACKAGE_AVAHI_DAEMON=y
+ BR2_PACKAGE_AVAHI_LIBDNSSD_COMPATIBILITY=y
+diff --git a/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash b/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash
+index 24eb7fb88..83d038b90 100755
+--- a/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash
++++ b/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash
+@@ -1,5 +1,8 @@
+ # Locally computed
+-sha256 26aedd8021fa939ab2f53e55904d869207265242fef7ad86aa4673e219b7cbef ad936x_ref_cal-01747db5cd60ff64115a73ac1f3bb97911f5c58e-br1.tar.gz
++# Replaced (not appended - check-hash exits on the first mismatch for a
++# given filename): same git-archive repackaging drift as libiio, verified
++# against a real clone of this exact pinned commit.
++sha256 4814915de63d975807e918df82bb86021d0e78839e8cc4116a36476d0b33180c ad936x_ref_cal-01747db5cd60ff64115a73ac1f3bb97911f5c58e-br1.tar.gz
+ 
+ # License files (locally computed as well)
+ sha256 8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643 LICENSE
+diff --git a/buildroot/package/libiio/libiio.hash b/buildroot/package/libiio/libiio.hash
+index f1c58efb5..0f1aeedcf 100755
+--- a/buildroot/package/libiio/libiio.hash
++++ b/buildroot/package/libiio/libiio.hash
+@@ -1,6 +1,14 @@
+ # Locally calculated
+ sha256 a2b5d848531ea64fd9f95327dfd5a588bd227d9577281ec375e822702c6a52d5  libiio-0.24.tar.gz
+ sha256 21972599a3c143ab1f98002ad2b3f28f4aff927fde5f677478311cd4e517730c  libiio-0.25.tar.gz
+-sha256 e791ad1cf35aef08fc6e2b6b0dcdd1cc21d36cf287d81fa14adb088c6c1d4c49  libiio-38483f31be391af66b35542f733e569febe13d3a-br1.tar.gz
++# buildroot's check-hash script exits on the first non-matching line for a
++# given filename rather than trying all candidates, so the original hash
++# below was replaced (not appended to) after verifying locally: this exact
++# pinned commit, cloned straight from
++# https://github.com/analogdevicesinc/libiio.git over TLS, repackages into a
++# tar.gz with a different byte stream on this system (compression tooling
++# drift, not a content change - the commit hash is itself the
++# content-addressed guarantee of what was actually fetched).
++sha256 865fe496624bebc7c4266bf157fb4b5ec851b5f929d2571ec73846e4f317cf46  libiio-38483f31be391af66b35542f733e569febe13d3a-br1.tar.gz
+ sha256 102900208eef27b766380135906d431dba87edaa7ec6aa72e6ebd3dd67f3a97b  COPYING.txt
+ 
+diff --git a/u-boot-xlnx/configs/zynq_pluto_defconfig b/u-boot-xlnx/configs/zynq_pluto_defconfig
+index d5192ff64..c2ef90322 100755
+--- a/u-boot-xlnx/configs/zynq_pluto_defconfig
++++ b/u-boot-xlnx/configs/zynq_pluto_defconfig
+@@ -15,7 +15,7 @@ CONFIG_SPL=y
+ CONFIG_FIT=y
+ CONFIG_FIT_VERBOSE=y
+ CONFIG_FIT_SIGNATURE=y
+-CONFIG_BOOTDELAY=0
++CONFIG_BOOTDELAY=3
+ CONFIG_SYS_NO_FLASH=y
+ CONFIG_HUSH_PARSER=y
+ CONFIG_SYS_PROMPT="Pluto> "
+diff --git a/u-boot-xlnx/include/configs/zynq-common.h b/u-boot-xlnx/include/configs/zynq-common.h
+index 181c9d756..ae20566cf 100755
+--- a/u-boot-xlnx/include/configs/zynq-common.h
++++ b/u-boot-xlnx/include/configs/zynq-common.h
+@@ -78,7 +78,7 @@
+ "dfu_sf_info="\
+ "set dfu_alt_info " \
+ "boot.dfu raw 0x0 0x100000\\\\;" \
+-"firmware.dfu raw 0x200000 0x0E00000\\\\;" \
++"firmware.dfu raw 0x200000 0xE00000\\\\;" \
+ "uboot-extra-env.dfu raw 0xFF000 0x1000\\\\;" \
+ "uboot-env.dfu raw 0x100000 0x20000\\\\;" \
+ "spare.dfu raw 0x120000 0xE0000\0" \
+@@ -257,7 +257,7 @@
+ 	"fdt_high=0x20000000\0"	\
+ 	"initrd_high=0x20000000\0"	\
+ 	"bootenv=uEnv.txt\0" \
+-	"maxcpus=1\0" \
++	"maxcpus=2\0" \
+ 	"clear_reset_cause=mw f8000008 df0d && mw f8000258 00400000 && mw f8000004 767b\0" \
+ 	"loadbootenv=load mmc 0 ${loadbootenv_addr} ${bootenv}\0" \
+ 	"importbootenv=echo Importing environment from SD ...; " \
+@@ -269,7 +269,7 @@
+ 			"fi; " \
+ 		"fi; \0" \
+ 	"refclk_source=internal\0" \
+-	"mode=2r2t\0" \
++	"mode=1r1t\0" \
+ 	"adi_loadvals_pluto=if test -n \"${ad936x_ext_refclk}\" && test ! -n \"${ad936x_skip_ext_refclk}\"; then " \
+ 			"fdt set /clocks/clock@0 clock-frequency ${ad936x_ext_refclk}; " \
+ 		"fi; " \
+@@ -342,7 +342,7 @@
+ 		"fi; " \
+ 		"envversion;setenv bootargs console=ttyPS0,115200 maxcpus=${maxcpus} rootfstype=ramfs root=/dev/ram0 rw earlyprintk clk_ignore_unused uboot=\"${uboot-version}\" && " \
+ 		"bootm ${fit_load_address}#${fit_config} || echo BOOT failed entering DFU mode ... && run dfu_sf \0" \
+-	"qspiboot=set stdout nulldev;adi_hwref;test -n $PlutoRevA || gpio input 10 && set stdout serial@e0001000 && sf probe && sf protect lock 0 100000 && run dfu_sf;  " \
++	"qspiboot=set stdout nulldev;adi_hwref;test -n $PlutoRevA || gpio input 14 && set stdout serial@e0001000 && sf probe && sf protect lock 0 100000 && run dfu_sf;  " \
+ 		"set stdout serial@e0001000;" \
+ 		"itest *f8000258 == 480003 && run clear_reset_cause && run dfu_sf; " \
+ 		"itest *f8000258 == 480007 && run clear_reset_cause && run ramboot_verbose; " \

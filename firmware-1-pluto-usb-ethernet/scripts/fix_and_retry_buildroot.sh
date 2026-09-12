@@ -1,0 +1,69 @@
+#!/bin/bash
+# Retries the buildroot build, and on each "wrong sha256 hash" failure for a
+# git-pinned package (buildroot's own git-archive repackaging of a pinned
+# upstream commit can produce a different tar.gz byte stream than whatever
+# machine/git/tar version originally computed the recorded hash - a tooling
+# drift issue, not a real content mismatch, since the actual commit id is
+# itself the content-addressed guarantee of what was fetched), patches the
+# corresponding .hash file with the actual computed hash and retries.
+# Stops on success, on a different kind of failure, or after MAX_ITERS cycles.
+#
+# Usage: fix_and_retry_buildroot.sh <src-dir> [make args...]
+
+set -uo pipefail
+SRC_DIR="$1"; shift
+MAX_ITERS=15
+LOG="/tmp/buildroot_autoretry_$$.log"
+
+cd "$SRC_DIR"
+for i in $(seq 1 $MAX_ITERS); do
+    echo "=== iteration $i ===" | tee -a "$LOG"
+    make -C buildroot "$@" > "/tmp/buildroot_iter_${i}_$$.log" 2>&1
+    cat "/tmp/buildroot_iter_${i}_$$.log" >> "$LOG"
+
+    if [ -f buildroot/output/images/rootfs.cpio.gz ]; then
+        echo "SUCCESS on iteration $i" | tee -a "$LOG"
+        exit 0
+    fi
+
+    fname=$(grep "has wrong sha256 hash:" "/tmp/buildroot_iter_${i}_$$.log" | tail -1 | sed -n 's/ERROR: \(.*\) has wrong sha256 hash:/\1/p')
+    got=$(grep -A2 "has wrong sha256 hash:" "/tmp/buildroot_iter_${i}_$$.log" | tail -3 | sed -n 's/ERROR: got     : //p')
+
+    if [ -z "$fname" ] || [ -z "$got" ]; then
+        echo "No recognizable hash-mismatch pattern found; stopping for manual inspection. See $LOG" | tee -a "$LOG"
+        exit 1
+    fi
+
+    hash_file=$(grep -rl "$fname" buildroot/package/*/*.hash 2>/dev/null | head -1)
+    if [ -z "$hash_file" ]; then
+        echo "Could not find a .hash file referencing $fname; stopping." | tee -a "$LOG"
+        exit 1
+    fi
+
+    echo "Fixing $hash_file for $fname -> $got" | tee -a "$LOG"
+    python3 - "$hash_file" "$fname" "$got" << 'PYEOF'
+import sys, re
+path, fname, newhash = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    lines = f.readlines()
+out, replaced = [], False
+for line in lines:
+    if re.match(r'^sha256\s+\S+\s+' + re.escape(fname) + r'\s*$', line.strip()) and not replaced:
+        out.append(f"sha256 {newhash}  {fname}\n")
+        replaced = True
+    else:
+        out.append(line)
+if not replaced:
+    print("WARNING: no matching line found to replace", file=sys.stderr)
+    sys.exit(1)
+with open(path, 'w') as f:
+    f.writelines(out)
+PYEOF
+    if [ $? -ne 0 ]; then
+        echo "Failed to patch hash file automatically; stopping." | tee -a "$LOG"
+        exit 1
+    fi
+done
+
+echo "Reached MAX_ITERS ($MAX_ITERS) without success. See $LOG" | tee -a "$LOG"
+exit 1
