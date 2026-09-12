@@ -49,11 +49,10 @@ firmware-1-pluto-usb-ethernet/src/
 **/ip_upgrade*.rpt
 **/*_vivado.log
 
-# Kept intentionally: the final bitstream and hardware platform export used
-# by the FSBL/packaging steps are small and worth keeping for convenience -
-# un-ignore them explicitly since they'd otherwise be caught by *.runs/ above.
+# Kept intentionally: the final bitstream is small and worth keeping for
+# convenience - un-ignore it explicitly since it'd otherwise be caught by
+# *.runs/ above.
 !**/pluto.runs/impl_1/system_top.bit
-!**/fmcomms2_zc706.runs/impl_1/system_top.bit
 
 # --- OS / editor cruft ---
 .DS_Store

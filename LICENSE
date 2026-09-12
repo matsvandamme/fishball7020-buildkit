@@ -27,12 +27,6 @@ themselves, as distinct from the copyrighted source they modify), `tools/`
 
 ## Vendored/generated components retain their own licenses
 
-- **`firmware-2-zc706-ethernet-only/hdl/`** — Analog Devices Inc. HDL
-  library and reference projects. See the `LICENSE_ADIBSD`,
-  `LICENSE_BSD-1-Clause`, `LICENSE_GPL2`, and `LICENSE_LGPL` files inside
-  that directory, which apply to the respective files they cover per ADI's
-  own repository conventions (https://github.com/analogdevicesinc/hdl).
-
 - **`firmware-1-pluto-usb-ethernet/src/`** (not committed to this repo —
   fetched fresh by `setup.sh`) — a monolithic checkout combining Linux
   (GPL-2.0), U-Boot (GPL-2.0+), and Buildroot (mostly MIT/BSD, individual
