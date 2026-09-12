@@ -5,7 +5,7 @@
 > verified to be as close to bit-perfect as is possible from public sources.
 > See [How this repo came to exist](#how-this-repo-came-to-exist).
 
-# Fishball7020 SDR Devkit
+# Fishball7020 Buildkit
 
 Build your own custom FPGA/HDL firmware for the **"7020-SDR"** — a
 Zynq XC7Z020-CLG400 + AD9361 software-defined radio board with dual TX/RX
