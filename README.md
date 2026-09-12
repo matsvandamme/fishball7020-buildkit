@@ -79,7 +79,7 @@ fishball7020-sdr-firmware/
 │   ├── env-vivado.sh                    ← source this before any vivado/xsct/bootgen command
 │   └── legacy-libs/libs/                vendored libtinfo5/libncurses5/libssl1.1 (see below)
 │
-└── firmware-1-pluto-usb-ethernet/       the only firmware target — factory-default USB+Ethernet build
+└── firmware/       the only firmware target — factory-default USB+Ethernet build
     ├── README.md                       deep technical reference: exact patch list, provenance,
     │                                   byte-for-byte comparison results against real hardware
     ├── patches/
@@ -149,21 +149,21 @@ exactly those libraries to `LD_LIBRARY_PATH` before sourcing Vivado's own
 ## 2. Get the firmware source
 
 ```bash
-cd firmware-1-pluto-usb-ethernet
+cd firmware
 ./scripts/setup.sh
 ```
 
 This clones the upstream source (a Zynq-7020 port of Analog Devices'
 `plutosdr-fw`) into `src/` and applies this repo's `patches/` on top —
 six real fixes plus the board's actual device tree (see the
-[firmware README](firmware-1-pluto-usb-ethernet/README.md) for exactly
+[firmware README](firmware/README.md) for exactly
 what each patch does and why). `src/` is gitignored and only exists on
 your machine; re-run `setup.sh` any time you want a clean slate.
 
 ## 3. Open the block diagram
 
 ```bash
-source ../tools/env-vivado.sh          # from firmware-1-pluto-usb-ethernet/
+source ../tools/env-vivado.sh          # from firmware/
 cd src/hdl/projects/pluto
 vivado pluto.xpr
 ```
@@ -276,7 +276,7 @@ Format a microSD card as a single FAT32 partition, then copy all five
 files from `output/` onto it:
 
 ```bash
-cp firmware-1-pluto-usb-ethernet/output/{BOOT.bin,devicetree.dtb,uEnv.txt,uImage,uramdisk.image.gz} /path/to/sd-card/
+cp firmware/output/{BOOT.bin,devicetree.dtb,uEnv.txt,uImage,uramdisk.image.gz} /path/to/sd-card/
 ```
 
 Eject it, insert it into the board, and power-cycle. This is the only
@@ -306,7 +306,7 @@ ideal for iterating on the kernel or rootfs without touching the SD card.
 3. From your host:
    ```bash
    dfu-util -l   # confirms you can see uImage / devicetree.dtb / uramdisk.image.gz
-   cd firmware-1-pluto-usb-ethernet/output
+   cd firmware/output
    dfu-util -D uImage             -a uImage
    dfu-util -D devicetree.dtb     -a devicetree.dtb
    dfu-util -D uramdisk.image.gz  -a uramdisk.image.gz
@@ -403,7 +403,7 @@ within a few hundred bytes of identical (the repo's git history was
 squashed to a single commit *after* this board's firmware was actually
 built, so a handful of source lines have drifted since — not recoverable
 from public sources alone). See the
-[firmware README](firmware-1-pluto-usb-ethernet/README.md) for the exact
+[firmware README](firmware/README.md) for the exact
 patch list, including two genuine upstream bugs (hardcoded debug
 leftovers) found and fixed along the way.
 

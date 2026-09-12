@@ -27,7 +27,7 @@ themselves, as distinct from the copyrighted source they modify), `tools/`
 
 ## Vendored/generated components retain their own licenses
 
-- **`firmware-1-pluto-usb-ethernet/src/`** (not committed to this repo —
+- **`firmware/src/`** (not committed to this repo —
   fetched fresh by `setup.sh`) — a monolithic checkout combining Linux
   (GPL-2.0), U-Boot (GPL-2.0+), and Buildroot (mostly MIT/BSD, individual
   packages carry their own licenses) from
