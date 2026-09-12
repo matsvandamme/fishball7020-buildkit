@@ -7,6 +7,13 @@
 
 # Fishball7020 Buildkit
 
+<p align="center">
+  <img src="https://img.shields.io/badge/board-Zynq%20XC7Z020%20%2B%20AD9361-blue" alt="Board: Zynq XC7Z020 + AD9361">
+  <img src="https://img.shields.io/badge/toolchain-Vivado%2FVitis%202022.2-orange" alt="Toolchain: Vivado/Vitis 2022.2">
+  <img src="https://img.shields.io/badge/host%20OS-Ubuntu%2022.04%20LTS-e95420" alt="Host OS: Ubuntu 22.04 LTS">
+  <img src="https://img.shields.io/badge/license-MIT%20%2B%20GPL%20(mixed)-lightgrey" alt="License: MIT + GPL (mixed)">
+</p>
+
 <p align="center"><img src="docs/img/board.jpg" alt="Fishball7020 / PlutoSky SDR board — Zynq XC7Z020 with AD9361, 4x SMA connectors, Ethernet and USB" width="480"></p>
 
 Build your own custom FPGA/HDL firmware for the **"7020-SDR"** — a
@@ -381,6 +388,12 @@ tree.
 - **`dfu-util -l` shows nothing** — you didn't stop autoboot in time,
   or `run dfu_mmc` wasn't accepted; try again and press a key
   immediately after power-on.
+
+Still stuck? [Open an issue](../../issues/new/choose) — pick the build
+failure or hardware mismatch template, they ask for exactly the details
+(stage, tool versions, logs) that actually speed up debugging a build
+system like this one. See also [CONTRIBUTING.md](CONTRIBUTING.md) if
+you'd like to fix something yourself.
 
 ## How this repo came to exist
 
