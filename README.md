@@ -8,9 +8,8 @@
 # Fishball7020 SDR Devkit
 
 Build your own custom FPGA/HDL firmware for the **"7020-SDR"** — a
-Zynq XC7Z020-CLG400 + AD9361 software-defined radio board with dual TX/RX,
-sold via the Xianyu (闲鱼) shop **"唐朝击剑鱼丸"** ("Tang Dynasty Fencing
-Fishball", hence "Fishball7020"), also distributed as **"PlutoSky"** by
+Zynq XC7Z020-CLG400 + AD9361 software-defined radio board with dual TX/RX
+(hence "Fishball7020"), also distributed as **"PlutoSky"** by
 OpenSourceSDRLab.
 
 This repo takes you from a stock, unmodified board all the way to **your own
