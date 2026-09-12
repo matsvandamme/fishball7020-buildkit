@@ -7,6 +7,8 @@
 
 # Fishball7020 Buildkit
 
+<p align="center"><img src="docs/img/board.jpg" alt="Fishball7020 / PlutoSky SDR board — Zynq XC7Z020 with AD9361, 4x SMA connectors, Ethernet and USB" width="480"></p>
+
 Build your own custom FPGA/HDL firmware for the **"7020-SDR"** — a
 Zynq XC7Z020-CLG400 + AD9361 software-defined radio board with dual TX/RX
 (hence "Fishball7020"), also distributed as **"PlutoSky"** by
