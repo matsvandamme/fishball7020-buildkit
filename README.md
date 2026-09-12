@@ -14,6 +14,12 @@ Zynq XC7Z020-CLG400 + AD9361 software-defined radio board with dual TX/RX
 (hence "Fishball7020"), also distributed as **"PlutoSky"** by
 OpenSourceSDRLab.
 
+> **This repo targets one exact board:** the one sold on AliExpress as
+> [**"7020-SDR" (XC7Z020 + AD9361, dual TX/RX)**](https://nl.aliexpress.com/item/1005012055627197.html).
+> Other Zynq/AD936x SDR boards — including the original ADALM-PLUTO
+> (XC7Z010) — use different pin constraints and won't work with the HDL
+> project or device tree built here without changes.
+
 This repo takes you from a stock, unmodified board all the way to **your own
 FPGA logic running inside it**: install Vivado, open the real block design,
 add your HDL next to the AD9361 datapath, rebuild every layer of the
