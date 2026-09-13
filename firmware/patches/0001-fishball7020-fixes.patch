@@ -32,40 +32,6 @@ index 6203766e0..ba275c12c 100755
  BR2_PACKAGE_AVAHI=y
  BR2_PACKAGE_AVAHI_DAEMON=y
  BR2_PACKAGE_AVAHI_LIBDNSSD_COMPATIBILITY=y
-diff --git a/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash b/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash
-index 24eb7fb88..83d038b90 100755
---- a/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash
-+++ b/buildroot/package/ad936x_ref_cal/ad936x_ref_cal.hash
-@@ -1,5 +1,8 @@
- # Locally computed
--sha256 26aedd8021fa939ab2f53e55904d869207265242fef7ad86aa4673e219b7cbef ad936x_ref_cal-01747db5cd60ff64115a73ac1f3bb97911f5c58e-br1.tar.gz
-+# Replaced (not appended - check-hash exits on the first mismatch for a
-+# given filename): same git-archive repackaging drift as libiio, verified
-+# against a real clone of this exact pinned commit.
-+sha256 4814915de63d975807e918df82bb86021d0e78839e8cc4116a36476d0b33180c ad936x_ref_cal-01747db5cd60ff64115a73ac1f3bb97911f5c58e-br1.tar.gz
- 
- # License files (locally computed as well)
- sha256 8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643 LICENSE
-diff --git a/buildroot/package/libiio/libiio.hash b/buildroot/package/libiio/libiio.hash
-index f1c58efb5..0f1aeedcf 100755
---- a/buildroot/package/libiio/libiio.hash
-+++ b/buildroot/package/libiio/libiio.hash
-@@ -1,6 +1,14 @@
- # Locally calculated
- sha256 a2b5d848531ea64fd9f95327dfd5a588bd227d9577281ec375e822702c6a52d5  libiio-0.24.tar.gz
- sha256 21972599a3c143ab1f98002ad2b3f28f4aff927fde5f677478311cd4e517730c  libiio-0.25.tar.gz
--sha256 e791ad1cf35aef08fc6e2b6b0dcdd1cc21d36cf287d81fa14adb088c6c1d4c49  libiio-38483f31be391af66b35542f733e569febe13d3a-br1.tar.gz
-+# buildroot's check-hash script exits on the first non-matching line for a
-+# given filename rather than trying all candidates, so the original hash
-+# below was replaced (not appended to) after verifying locally: this exact
-+# pinned commit, cloned straight from
-+# https://github.com/analogdevicesinc/libiio.git over TLS, repackages into a
-+# tar.gz with a different byte stream on this system (compression tooling
-+# drift, not a content change - the commit hash is itself the
-+# content-addressed guarantee of what was actually fetched).
-+sha256 865fe496624bebc7c4266bf157fb4b5ec851b5f929d2571ec73846e4f317cf46  libiio-38483f31be391af66b35542f733e569febe13d3a-br1.tar.gz
- sha256 102900208eef27b766380135906d431dba87edaa7ec6aa72e6ebd3dd67f3a97b  COPYING.txt
- 
 diff --git a/u-boot-xlnx/configs/zynq_pluto_defconfig b/u-boot-xlnx/configs/zynq_pluto_defconfig
 index d5192ff64..c2ef90322 100755
 --- a/u-boot-xlnx/configs/zynq_pluto_defconfig

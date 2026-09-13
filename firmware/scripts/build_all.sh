@@ -170,7 +170,10 @@ for d in hdl buildroot linux u-boot-xlnx; do
     echo "$d $(cd "$SRC_DIR/$d" && git describe --abbrev=4 --dirty --always --tags)" >> "$SRC_DIR/buildroot/board/pluto/VERSIONS"
 done
 buildroot_defconfig
-PATH="$CLEAN_PATH" make -C "$SRC_DIR/buildroot" legal-info
+# legal-info downloads sources, so it can hit the same git-archive hash drift
+# as the main build - run it through the same auto-repair wrapper rather than
+# letting it kill the build before the wrapper is ever reached.
+PATH="$CLEAN_PATH" "$BUILD_ALL_DIR/fix_and_retry_buildroot.sh" "$SRC_DIR" legal-info
 mkdir -p "$SRC_DIR/build"
 (cd "$SRC_DIR" && PATH="$CLEAN_PATH" scripts/legal_info_html.sh "PlutoSDR" "$SRC_DIR/buildroot/board/pluto/VERSIONS")
 cp "$SRC_DIR/build/LICENSE.html" "$SRC_DIR/buildroot/board/pluto/msd/LICENSE.html"

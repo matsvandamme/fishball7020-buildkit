@@ -19,9 +19,15 @@ cd "$SRC_DIR"
 for i in $(seq 1 $MAX_ITERS); do
     echo "=== iteration $i ===" | tee -a "$LOG"
     make -C buildroot "$@" > "/tmp/buildroot_iter_${i}_$$.log" 2>&1
+    make_rc=$?
     cat "/tmp/buildroot_iter_${i}_$$.log" >> "$LOG"
 
-    if [ -f buildroot/output/images/rootfs.cpio.gz ]; then
+    # Judge success by make's own exit code, not by the presence of
+    # rootfs.cpio.gz. That artifact only appears for the "all" target, so the
+    # old check made this wrapper unusable for any other target - including
+    # "legal-info", which downloads sources too and can hit exactly the same
+    # hash drift this script exists to repair.
+    if [ "$make_rc" -eq 0 ]; then
         echo "SUCCESS on iteration $i" | tee -a "$LOG"
         exit 0
     fi
