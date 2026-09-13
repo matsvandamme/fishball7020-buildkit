@@ -745,7 +745,7 @@ tree.
 ## Repository layout
 
 ```
-fishball7020-sdr-firmware/
+fishball7020-fpga-devkit/
 ├── README.md                            ← you are here: the full build/flash workflow
 ├── LICENSE                              multiple licenses apply — see below
 │
