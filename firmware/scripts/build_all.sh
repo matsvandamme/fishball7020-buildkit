@@ -44,6 +44,16 @@ for f in /tools/Xilinx/Vivado/2022.2/bin/vivado \
     [ -x "$f" ] || { echo "ERROR: missing $f (is Vivado/Vitis 2022.2 installed?)" >&2
                      preflight_fail=1; }
 done
+# The kernel builds GCC plugins (scripts/gcc-plugins), which include gmp.h
+# from the compiler's plugin headers. Ask the compiler rather than guessing a
+# path - it lives at /usr/include/gmp.h on some distros and under a multiarch
+# directory on others. Without it the build dies ~50 minutes in, at stage 4.
+if ! echo '#include <gmp.h>' | gcc -E -x c - >/dev/null 2>&1; then
+    echo "ERROR: gmp.h not found - the kernel's GCC plugins cannot build." >&2
+    echo "       sudo apt install -y libgmp-dev libmpc-dev libmpfr-dev" >&2
+    preflight_fail=1
+fi
+
 # xsct needs an X display. With a desktop session ($DISPLAY set) it uses that;
 # headless - over SSH, in CI, on a server - it falls back to Xvfb, and without
 # Xvfb installed it dies at stage 2 with a bare "Xvfb is not available".

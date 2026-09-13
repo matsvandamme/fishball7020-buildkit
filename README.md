@@ -120,7 +120,8 @@ Copy all five onto a FAT32 SD card, insert, power on. Then jump to
 # run on your HOST, from anywhere
 sudo apt update
 sudo apt install -y git build-essential bison flex libssl-dev \
-    device-tree-compiler u-boot-tools dfu-util screen python3 xvfb
+    device-tree-compiler u-boot-tools dfu-util screen python3 xvfb \
+    libgmp-dev libmpc-dev libmpfr-dev
 ```
 
 - **No extra GCC needed on 22.04.** Jammy's default GCC 11 builds
@@ -134,6 +135,10 @@ sudo apt install -y git build-essential bison flex libssl-dev \
   build the device tree and the ramdisk image.
 - `dfu-util` and `screen` are only needed if you'll flash/debug over USB
   (steps 6B/7) rather than by copying files to an SD card.
+- **`libgmp-dev`/`libmpc-dev`/`libmpfr-dev`** are needed by the kernel's
+  GCC-plugin build (`scripts/gcc-plugins`), which `#include <gmp.h>`. Miss
+  them and the build fails at stage 4 with `fatal error: gmp.h: No such file
+  or directory`.
 - **`xvfb` matters if you build headless** — over SSH, in CI, or on a box
   with no desktop. Vitis (`xsct`) needs an X display to build the FSBL: it
   uses `$DISPLAY` if one is set, and otherwise falls back to Xvfb. Without
