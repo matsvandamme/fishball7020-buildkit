@@ -43,65 +43,71 @@ required either way.
 | **Firmware base** | Linux 5.15, U-Boot, Buildroot — a Zynq-7020 port of ADI's `plutosdr-fw` |
 | **Verified against real hardware** | `devicetree.dtb` byte-identical; kernel, bootloader, rootfs content-identical — see [Provenance](#how-this-repo-came-to-exist) |
 
+## What you get
+
+- **A firmware build you can trust** — verified against a real unit:
+  `devicetree.dtb` comes out byte-for-byte identical, the rootfs and
+  bootloader environment content-identical.
+- **One command builds every layer** — bitstream → FSBL → U-Boot →
+  Linux 5.15 → Buildroot root filesystem → `BOOT.bin`.
+- **The real ADI block design, editable** — open it in Vivado and put your
+  own HDL directly into the AD9361 datapath.
+- **Three ways onto the board** — SD card, DFU over USB, or JTAG for a
+  seconds-long iteration loop instead of a full rebuild.
+- **Your changes are reproducible** — they live in `patches/`, so a clean
+  clone rebuilds them on any machine.
+- **Free toolchain** — the XC7Z020 is covered by Vivado's no-cost WebPACK
+  licence. No purchase, no licence file.
+- **The traps are already handled** — Vivado `PATH` pollution breaking the
+  kernel build, Buildroot mirror timeouts, host GCC version drift. Each one
+  cost a debugging session; none of them will cost you one.
+
+## Quick start
+
+Assumes Vivado/Vitis 2022.2 is installed ([step 1](#1-install-vivadovitis-20222)
+if not — it's the only slow part).
+
+```bash
+# run from: wherever you want the devkit to live (e.g. ~)
+git clone https://github.com/matsvandamme/fishball7020-fpga-devkit.git
+cd fishball7020-fpga-devkit/firmware
+
+./scripts/setup.sh        # clone upstream source + apply patches  (~5 min)
+./scripts/build_all.sh    # build everything                    (45-90 min)
+```
+
+You should end up with exactly five files:
+
+```
+$ ls output/
+BOOT.bin  devicetree.dtb  uEnv.txt  uImage  uramdisk.image.gz
+```
+
+Copy all five onto a FAT32 SD card, insert, power on. Then jump to
+[step 4](#4-add-your-own-hdl) to start changing the FPGA logic.
+
+> **Back up first.** Before flashing anything, copy the five files already
+> on your board's SD card somewhere safe — that's your one-click way back if
+> a build misbehaves. No backup? See
+> [recovery](#if-things-go-wrong-recovering-the-factory-firmware).
+
 ## Table of contents
 
-- [Before you start: back up your stock firmware](#before-you-start-back-up-your-stock-firmware)
-- [Prerequisites](#prerequisites)
+- [What you get](#what-you-get) · [Quick start](#quick-start)
+- [Requirements](#requirements)
+- **Walkthrough** — [1. Install Vivado](#1-install-vivadovitis-20222) ·
+  [2. Get the source](#2-get-the-firmware-source) ·
+  [3. Open the block diagram](#3-open-the-block-diagram) ·
+  [4. Add your own HDL](#4-add-your-own-hdl) ·
+  [5. Build](#5-build-the-firmware) ·
+  [6. Flash](#6-flash-the-board) ·
+  [7. Verify](#7-verify-your-build-is-actually-running)
 - [Repository layout](#repository-layout)
-- [1. Install Vivado/Vitis 2022.2](#1-install-vivadovitis-2022-2)
-- [2. Get the firmware source](#2-get-the-firmware-source)
-- [3. Open the block diagram](#3-open-the-block-diagram)
-- [4. Add your own HDL](#4-add-your-own-hdl)
-- [5. Build the firmware](#5-build-the-firmware)
-- [6. Flash the board](#6-flash-the-board)
-  - [Option A — SD card](#option-a--sd-card-always-works)
-  - [Option B — DFU over USB](#option-b--dfu-over-usb-no-disassembly)
-- [7. Verify your build is actually running](#7-verify-your-build-is-actually-running)
 - [Troubleshooting](#troubleshooting)
-- [How this repo came to exist](#how-this-repo-came-to-exist)
-- [Vendor resources](#vendor-resources)
-- [License](#license)
+- [How this repo came to exist](#how-this-repo-came-to-exist) ·
+  [Vendor resources](#vendor-resources) · [License](#license)
 
-## Before you start: back up your stock firmware
-
-This devkit replaces the FPGA bitstream, bootloader, kernel, and root
-filesystem on your board — a bad build (or a bad flash) can leave it
-unable to boot. Before you touch anything:
-
-1. **Image the SD card your board actually shipped with**, file-for-file,
-   onto your computer (just copy the 5 files off the FAT32 partition —
-   `BOOT.bin`, `devicetree.dtb`, `uEnv.txt`, `uImage`, `uramdisk.image.gz`
-   — to a folder you'll keep). That's your known-good fallback: if a
-   custom build doesn't boot, re-copying these 5 original files back onto
-   the card restores exactly the factory state.
-2. If you only have one SD card, **buy a second one** before
-   experimenting — microSD cards are cheap, and it means you're never in
-   a position where your only fallback and your only test card are the
-   same physical object.
-3. **DFU (see step 6B) is not a rescue path.** If a bad `BOOT.bin` won't
-   boot, U-Boot never starts DFU mode either, so pushing new files over
-   USB isn't possible — an SD card swap back to the stock files (or a
-   known-good build) is the only way back at that point.
-
-### If you have no backup: the vendor's factory firmware
-
-If you skipped the backup, or lost it, the distributor publishes the
-board's prebuilt factory firmware here:
-
-**[`OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR`](https://github.com/OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR)**
-
-This is a genuine known-good fallback, not a guess: during this project the
-binaries in that repo were compared byte-for-byte against a working unit's
-SD card and confirmed as the real source of this board's factory firmware.
-Copy its SD-card files onto a FAT32 card exactly as in
-[Option A](#option-a--sd-card-always-works) and the board returns to its
-shipped state.
-
-Keep a copy locally *before* you start experimenting — a rescue that needs
-a working internet connection and a third-party repo still being online is
-a weaker safety net than a folder on your own disk.
-
-## Prerequisites
+## Requirements
 
 **Hardware:**
 - A Fishball7020 / PlutoSky board, a micro-USB cable, and a microSD card
@@ -128,48 +134,6 @@ sudo apt install -y git build-essential bison flex libssl-dev \
   build the device tree and the ramdisk image.
 - `dfu-util` and `screen` are only needed if you'll flash/debug over USB
   (steps 6B/7) rather than by copying files to an SD card.
-
-## Repository layout
-
-```
-fishball7020-sdr-firmware/
-├── README.md                            ← you are here: the full build/flash workflow
-├── LICENSE                              multiple licenses apply — see below
-│
-├── tools/
-│   ├── env-vivado.sh                    ← source this before any vivado/xsct/bootgen command
-│   └── legacy-libs/libs/                vendored libtinfo5/libncurses5/libssl1.1 (see below)
-│
-└── firmware/       the only firmware target — factory-default USB+Ethernet build
-    ├── README.md                       deep technical reference: exact patch list, provenance,
-    │                                   byte-for-byte comparison results against real hardware
-    ├── patches/
-    │   ├── 0001-fishball7020-fixes.patch        6 real fixes (see firmware README for details)
-    │   └── 0002-add-fishball-devicetree.patch   the board's actual device tree, as source
-    ├── scripts/
-    │   ├── setup.sh                    (run once) clones upstream source into src/, applies patches/
-    │   ├── build_all.sh                (run every time) full build → output/
-    │   ├── build_hdl.tcl               Vivado batch script: synth → impl → export hardware platform
-    │   ├── gen_fsbl_create.tcl         Vitis/xsct: scaffold the FSBL app from the hardware platform
-    │   ├── gen_fsbl_build.tcl          Vitis/xsct: compile the FSBL app
-    │   ├── fix_and_retry_buildroot.sh  auto-repairs a known Buildroot git-archive hash-drift issue
-    │   └── boot.bif                    bootgen recipe: FSBL + bitstream + U-Boot → BOOT.bin
-    ├── src/                            ← created by setup.sh, NOT committed to git (see .gitignore)
-    │   │                                 the actual upstream source tree you'll edit HDL/kernel/etc in:
-    │   ├── hdl/projects/pluto/          ← the Vivado project lives here (pluto.xpr, once built)
-    │   │   ├── system_bd.tcl            block-design source (what you're editing in step 4)
-    │   │   ├── system_top.v             top-level HDL wrapper
-    │   │   └── system_constr.xdc        pin constraints
-    │   ├── linux/                       Linux 5.15 kernel source
-    │   ├── u-boot-xlnx/                 U-Boot source
-    │   └── buildroot/                   Buildroot tree that builds the root filesystem
-    └── output/                          ← build_all.sh writes the 5 final SD-card files here:
-        ├── BOOT.bin                     FSBL + bitstream + U-Boot (changes whenever HDL changes)
-        ├── devicetree.dtb
-        ├── uEnv.txt
-        ├── uImage                       the Linux kernel
-        └── uramdisk.image.gz            the root filesystem
-```
 
 ## 1. Install Vivado/Vitis 2022.2
 
@@ -548,6 +512,25 @@ inside `system_top.xsa`), `system_top.bit`, and the `u-boot` ELF.
 When the design is working, rebuild properly (`build_all.sh`) and flash via
 Option A so it persists.
 
+### If things go wrong: recovering the factory firmware
+
+If a build misbehaves and you have no backup of your own, the distributor publishes the board's prebuilt factory firmware:
+If you skipped the backup, or lost it, the distributor publishes the
+board's prebuilt factory firmware here:
+
+**[`OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR`](https://github.com/OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR)**
+
+This is a genuine known-good fallback, not a guess: during this project the
+binaries in that repo were compared byte-for-byte against a working unit's
+SD card and confirmed as the real source of this board's factory firmware.
+Copy its SD-card files onto a FAT32 card exactly as in
+[Option A](#option-a--sd-card-always-works) and the board returns to its
+shipped state.
+
+Keep a copy locally *before* you start experimenting — a rescue that needs
+a working internet connection and a third-party repo still being online is
+a weaker safety net than a folder on your own disk.
+
 ## 7. Verify your build is actually running
 
 **Which USB port is which** — the board has two, and they do completely
@@ -643,6 +626,48 @@ running `iio_info` as the `fw_version` context attribute, and
 `hw_model` there should read
 `FISH Ball PlutoSDR Rev.A (Z7020-AD9361)`, matching this board's device
 tree.
+
+## Repository layout
+
+```
+fishball7020-sdr-firmware/
+├── README.md                            ← you are here: the full build/flash workflow
+├── LICENSE                              multiple licenses apply — see below
+│
+├── tools/
+│   ├── env-vivado.sh                    ← source this before any vivado/xsct/bootgen command
+│   └── legacy-libs/libs/                vendored libtinfo5/libncurses5/libssl1.1 (see below)
+│
+└── firmware/       the only firmware target — factory-default USB+Ethernet build
+    ├── README.md                       deep technical reference: exact patch list, provenance,
+    │                                   byte-for-byte comparison results against real hardware
+    ├── patches/
+    │   ├── 0001-fishball7020-fixes.patch        6 real fixes (see firmware README for details)
+    │   └── 0002-add-fishball-devicetree.patch   the board's actual device tree, as source
+    ├── scripts/
+    │   ├── setup.sh                    (run once) clones upstream source into src/, applies patches/
+    │   ├── build_all.sh                (run every time) full build → output/
+    │   ├── build_hdl.tcl               Vivado batch script: synth → impl → export hardware platform
+    │   ├── gen_fsbl_create.tcl         Vitis/xsct: scaffold the FSBL app from the hardware platform
+    │   ├── gen_fsbl_build.tcl          Vitis/xsct: compile the FSBL app
+    │   ├── fix_and_retry_buildroot.sh  auto-repairs a known Buildroot git-archive hash-drift issue
+    │   └── boot.bif                    bootgen recipe: FSBL + bitstream + U-Boot → BOOT.bin
+    ├── src/                            ← created by setup.sh, NOT committed to git (see .gitignore)
+    │   │                                 the actual upstream source tree you'll edit HDL/kernel/etc in:
+    │   ├── hdl/projects/pluto/          ← the Vivado project lives here (pluto.xpr, once built)
+    │   │   ├── system_bd.tcl            block-design source (what you're editing in step 4)
+    │   │   ├── system_top.v             top-level HDL wrapper
+    │   │   └── system_constr.xdc        pin constraints
+    │   ├── linux/                       Linux 5.15 kernel source
+    │   ├── u-boot-xlnx/                 U-Boot source
+    │   └── buildroot/                   Buildroot tree that builds the root filesystem
+    └── output/                          ← build_all.sh writes the 5 final SD-card files here:
+        ├── BOOT.bin                     FSBL + bitstream + U-Boot (changes whenever HDL changes)
+        ├── devicetree.dtb
+        ├── uEnv.txt
+        ├── uImage                       the Linux kernel
+        └── uramdisk.image.gz            the root filesystem
+```
 
 ## Troubleshooting
 
