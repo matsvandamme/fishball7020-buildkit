@@ -83,7 +83,10 @@ $ ls output/
 BOOT.bin  devicetree.dtb  uEnv.txt  uImage  uramdisk.image.gz
 ```
 
-Copy all five onto a FAT32 SD card, insert, power on. Then jump to
+Copy all five onto a FAT32 SD card and insert it. **Set the `BOOT` DIP
+switch to SD mode (`0 0`) with the board powered off** — it ships in QSPI
+mode and will otherwise ignore the card entirely. See
+[Boot modes](#boot-modes-boot-dip-switch). Then power on, and jump to
 [step 4](#4-add-your-own-hdl) to start changing the FPGA logic.
 
 New to FPGAs or embedded Linux? **[How it works](docs/how-it-works.md)**
@@ -98,7 +101,7 @@ login prompt — no prior knowledge assumed.
 ## Table of contents
 
 - [What you get](#what-you-get) · [Quick start](#quick-start)
-- [Requirements](#requirements)
+- [Boot modes (DIP switch)](#boot-modes-boot-dip-switch) · [Requirements](#requirements)
 - **Walkthrough** — [1. Install Vivado](#1-install-vivadovitis-20222) ·
   [2. Get the source](#2-get-the-firmware-source) ·
   [3. Open the block diagram](#3-open-the-block-diagram) ·
@@ -111,6 +114,52 @@ login prompt — no prior knowledge assumed.
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist) ·
   [Vendor resources](#vendor-resources) · [License](#license)
+
+## Boot modes (BOOT DIP switch)
+
+**Read this before your first flash.** The board picks where to boot from
+using a two-position DIP switch marked **`BOOT`**, next to the `RST` button
+between the `USB2.0` and `DEBUG` ports. **It ships set to QSPI flash, not SD
+card** — so copying the five files onto an SD card and powering on does
+nothing until you move the switch.
+
+<p align="center"><img src="docs/img/boot-modes.svg" alt="BOOT DIP switch positions: SD card = 0 0 (both sliders down), QSPI flash = 1 0, JTAG = 1 1 (both sliders up)" width="660"></p>
+
+| Mode | SW1 | SW2 | What it does |
+|---|---|---|---|
+| **SD card** | `0` (GND) | `0` (GND) | Boots `BOOT.bin` from the microSD card — **use this for the devkit** |
+| **QSPI flash** | `1` (VCC3V3) | `0` (GND) | Boots from the onboard flash chip — **factory default** |
+| **JTAG** | `1` (VCC3V3) | `1` (VCC3V3) | For debugging and flashing over JTAG |
+
+`1` means the slider is pushed toward the **`ON`** marking on the switch
+body; `0` means the opposite side.
+
+> **Always change it with the board powered off.** The boot mode is sampled
+> only at power-on, so flipping it on a running board does nothing until the
+> next power cycle — and hot-switching signal pins is a bad habit regardless.
+
+Two useful consequences:
+
+- **Your stock firmware stays safe in QSPI.** SD-card boot doesn't touch the
+  flash, so the factory image remains intact. If a build misbehaves, set the
+  switch back to `1 0` and the board boots exactly as it shipped — a hardware
+  undo that needs no files at all.
+- **JTAG mode is for the [Option C](#option-c--jtag-temporary-but-the-fastest-hdl-loop)
+  workflow**, not for normal running.
+
+### LEDs
+
+Three indicators sit between the two USB ports:
+
+| LED | Meaning |
+|---|---|
+| `PWR` | Power present |
+| `DONE` | FPGA configured successfully — the same DONE signal Vivado reports as `End of startup status: HIGH` |
+| `USER` | Driven by the firmware; blinks once Linux is up and running |
+
+Source: the distributor's own
+[PlutoSky R1 write-up](https://blog.opensourcesdrlab.com/archives/PlutoSky-R1),
+which has photographs of each switch position.
 
 ## Requirements
 
@@ -359,6 +408,11 @@ cp output/{BOOT.bin,devicetree.dtb,uEnv.txt,uImage,uramdisk.image.gz} /path/to/s
 Eject it, insert it into the board, and power-cycle. This is the only
 option that can update **everything**, including the FPGA bitstream, and
 it's the one to use whenever you've changed HDL.
+
+Make sure the `BOOT` switch is in **SD mode (`0 0`)** — see
+[Boot modes](#boot-modes-boot-dip-switch). A board still in its factory QSPI
+setting will boot the stock firmware and ignore your card, which looks
+exactly like a failed build.
 
 ### Option B — DFU over USB (no disassembly)
 

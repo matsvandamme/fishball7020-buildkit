@@ -1,0 +1,32 @@
+Fishball7020 FPGA Devkit
+Copyright (C) 2026 Matthieu
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 2, as published
+by the Free Software Foundation. See LICENSE for the full text.
+
+--------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------
+
+tools/legacy-libs/
+    Prebuilt compatibility shared libraries (libtinfo, libncurses, libssl,
+    libcrypto) redistributed unmodified from Ubuntu's package archive, so
+    that Vivado 2022.2 can run on distributions that no longer ship these
+    soname versions. They remain under their own upstream licences
+    (ncurses: MIT-style; OpenSSL: Apache-2.0) and are not covered by the
+    GPL-2.0 terms above.
+
+docs/img/board.jpg
+    Product photograph of the board, from the distributor's own listing.
+
+firmware/src/  (not committed; fetched by firmware/scripts/setup.sh)
+    Linux (GPL-2.0), U-Boot (GPL-2.0+) and Buildroot (mostly MIT/BSD, with
+    individual packages under their own licences), from
+    https://github.com/Xiaozhang-code-cloud/Fish-Wan-plutosdr-fw-7020-SDR
+
+    The diffs in firmware/patches/ apply to that GPL-2.0 source and are
+    distributed under GPL-2.0 accordingly.
+
+AMD/Xilinx Vivado, Vitis and any AMD IP referenced by the HDL projects are
+proprietary, licensed separately by AMD, and not covered by this repository.
