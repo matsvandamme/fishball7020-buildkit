@@ -1,0 +1,157 @@
+diff --git a/hdl/projects/pluto/ad_fs4_ddc.v b/hdl/projects/pluto/ad_fs4_ddc.v
+new file mode 100644
+index 000000000..aa28e5203
+--- /dev/null
++++ b/hdl/projects/pluto/ad_fs4_ddc.v
+@@ -0,0 +1,90 @@
++// ***************************************************************************
++// ***************************************************************************
++// Copyright (C) 2026 fishball7020-fpga-devkit contributors
++//
++// Distributed under the GNU General Public License version 2, which can be
++// found in the top level directory of this repository (LICENSE), and also
++// online at: <https://www.gnu.org/licenses/old-licenses/gpl-2.0.html>
++//
++// This module is distributed in the hope that it will be useful, but WITHOUT
++// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++// FITNESS FOR A PARTICULAR PURPOSE.
++// ***************************************************************************
++// ***************************************************************************
++
++// ad_fs4_ddc - shift a complex baseband stream down by exactly Fs/4.
++//
++// WHY THIS EXISTS
++// ---------------
++// The AD9361 is tuned deliberately OFF-channel, so that its LO leakage and
++// DC offset do not land in the middle of the wanted signal. That puts the
++// wanted channel at a positive baseband offset instead of at DC - and a
++// real-coefficient FIR cannot select it there, because a real filter's
++// magnitude response is symmetric about DC and would pass the mirror image
++// at the negative offset just as well.
++//
++// Choose the sample rate so the offset is exactly Fs/4 and the correction is
++// free: multiplying by exp(-j*pi*n/2) cycles through 1, -j, -1, +j, so every
++// "multiply" is a swap of I and Q plus a sign change. No DSP48s, no BRAM, no
++// coefficients, no NCO. The channel lands at DC, where the ordinary real
++// lowpass in rx_fir_decimator is exactly the right tool.
++//
++//   n=0  x  1  ->  ( I,  Q)
++//   n=1  x -j  ->  ( Q, -I)
++//   n=2  x -1  ->  (-I, -Q)
++//   n=3  x +j  ->  (-Q,  I)
++//
++// See docs/wbfm-channelizer.md for the rate arithmetic.
++//
++// TWO THINGS THAT LOOK LIKE BUGS AND ARE NOT
++// ------------------------------------------
++// 1. The phase counter has no reset. Its start value is arbitrary, which
++//    rotates the output by a fixed multiple of 90 degrees. A constant phase
++//    rotation is not an error: exp(-j*pi*(n+k)/2) = exp(-j*pi*k/2) *
++//    exp(-j*pi*n/2), so the wanted frequency shift is unaffected and only a
++//    constant unit-magnitude factor differs. FM demodulation differentiates
++//    phase and is completely blind to it.
++//
++// 2. Negation is unguarded. Two's complement negation overflows only at the
++//    most negative value, -32768 for 16 bits. It cannot occur here: the
++//    AD9361 delivers 12-bit samples that ad_datafmt.v sign-extends into the
++//    16-bit container, so the input range is [-2048, +2047]. A clamp would
++//    be dead logic. If you ever widen the converter data path, revisit this.
++
++`timescale 1ns/100ps
++
++module ad_fs4_ddc #(
++
++  // Channel data width
++  parameter DATA_WIDTH = 16
++) (
++  input                         clk,
++
++  input                         valid_in,
++  input      [DATA_WIDTH-1:0]   i_in,
++  input      [DATA_WIDTH-1:0]   q_in,
++
++  output reg                    valid_out,
++  output reg [DATA_WIDTH-1:0]   i_out,
++  output reg [DATA_WIDTH-1:0]   q_out
++);
++
++  reg [1:0] phase = 2'd0;
++
++  // The data registers update only on a valid input sample, so they hold
++  // their value between samples; valid_out is registered every cycle and so
++  // arrives one clock after the input it describes, aligned with the data.
++  always @(posedge clk) begin
++    valid_out <= valid_in;
++    if (valid_in == 1'b1) begin
++      case (phase)
++        2'd0: begin i_out <=  i_in; q_out <=  q_in; end
++        2'd1: begin i_out <=  q_in; q_out <= -i_in; end
++        2'd2: begin i_out <= -i_in; q_out <= -q_in; end
++        2'd3: begin i_out <= -q_in; q_out <=  i_in; end
++      endcase
++      phase <= phase + 2'd1;
++    end
++  end
++
++endmodule
+diff --git a/hdl/projects/pluto/system_bd.tcl b/hdl/projects/pluto/system_bd.tcl
+index 8eeff72ab..a42919ff9 100755
+--- a/hdl/projects/pluto/system_bd.tcl
++++ b/hdl/projects/pluto/system_bd.tcl
+@@ -232,11 +232,30 @@ ad_ip_parameter axi_ad9361_adc_dma CONFIG.DMA_2D_TRANSFER 0
+ ad_ip_parameter axi_ad9361_adc_dma CONFIG.DMA_DATA_WIDTH_SRC 64
+ ad_ip_parameter axi_ad9361_adc_dma CONFIG.SYNC_TRANSFER_START {true}
+ 
++# WBFM channelizer: the RX channel-0 path selects ONE broadcast channel.
++#
++# The AD9361 is tuned deliberately off-channel so its LO leakage and DC offset
++# stay out of the wanted signal, which leaves that signal at +Fs/4 rather than
++# at DC. rx_ddc shifts it down to DC for free (see ad_fs4_ddc.v), and only
++# then does the real-coefficient lowpass below become the right tool.
++#
++# Coefficients are generated by scripts/gen_fir_coe.py and copied in beside
++# this file by build_all.sh, so scripts/ stays the single source of truth.
++# NOTE the TX interpolator below keeps ADI's stock wideband coefficients -
++# both used to share one file, and narrowing TX to an FM channel is not
++# wanted. Do not "tidy" these two paths back onto one .coe.
+ ad_add_decimation_filter "rx_fir_decimator" 8 2 1 {61.44} {61.44} \
+-                         "$ad_hdl_dir/library/util_fir_int/coefile_int.coe"
++                         "$ad_hdl_dir/projects/pluto/coefile_wbfm_102100.coe"
+ ad_ip_instance xlslice decim_slice
+ ad_ip_instance util_cpack2 cpack
+ 
++# Fs/4 digital downconverter, ahead of the channel filter. add_files here
++# rather than via adi_project_files in system_project.tcl: this file is
++# sourced from inside adi_project_create, which runs first, so the module is
++# not in the fileset yet. Same reason adi_fir_filter_bd.tcl adds its own.
++add_files -norecurse $ad_hdl_dir/projects/pluto/ad_fs4_ddc.v
++create_bd_cell -type module -reference ad_fs4_ddc rx_ddc
++
+ # connections
+ 
+ ad_connect  rx_clk_in_p axi_ad9361/rx_clk_in_p
+@@ -262,12 +281,20 @@ ad_connect  axi_ad9361/l_clk axi_ad9361/clk
+ 
+ ad_connect axi_ad9361/l_clk rx_fir_decimator/aclk
+ 
+-ad_connect axi_ad9361/adc_valid_i0 rx_fir_decimator/valid_in_0
++# Channel 0 I/Q now runs axi_ad9361 -> rx_ddc -> rx_fir_decimator.
++# The enables are static configuration, not per-sample strobes, so they go
++# straight across; only data and valid pass through the shifter.
++ad_connect axi_ad9361/l_clk rx_ddc/clk
++ad_connect axi_ad9361/adc_valid_i0 rx_ddc/valid_in
++ad_connect axi_ad9361/adc_data_i0 rx_ddc/i_in
++ad_connect axi_ad9361/adc_data_q0 rx_ddc/q_in
++
++ad_connect rx_ddc/valid_out rx_fir_decimator/valid_in_0
+ ad_connect axi_ad9361/adc_enable_i0 rx_fir_decimator/enable_in_0
+-ad_connect axi_ad9361/adc_data_i0 rx_fir_decimator/data_in_0
+-ad_connect axi_ad9361/adc_valid_q0 rx_fir_decimator/valid_in_1
++ad_connect rx_ddc/i_out rx_fir_decimator/data_in_0
++ad_connect rx_ddc/valid_out rx_fir_decimator/valid_in_1
+ ad_connect axi_ad9361/adc_enable_q0 rx_fir_decimator/enable_in_1
+-ad_connect axi_ad9361/adc_data_q0 rx_fir_decimator/data_in_1
++ad_connect rx_ddc/q_out rx_fir_decimator/data_in_1
+ 
+ ad_connect axi_ad9361/l_clk cpack/clk
+ ad_connect axi_ad9361/rst cpack/reset
