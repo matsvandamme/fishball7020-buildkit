@@ -79,8 +79,11 @@ Firmware/` dump pulled from a real unit:
   node), so this file is the real board's own `devicetree.dtb`, decompiled
   back to source with `dtc` and confirmed to recompile byte-for-byte
   identical to the original through the actual kernel build path.
-- **`0003-wbfm-channelizer.patch`** — not a fidelity fix, unlike the two
-  above: this one *changes* the RX datapath, as a worked example of putting
+- **`optional/0003-wbfm-channelizer.patch`** — **not applied by default.**
+  Unlike the others this *changes* what the radio does rather than fixing it,
+  so it lives in `patches/optional/` and `setup.sh` leaves it alone. Apply it
+  by hand with `(cd src && git apply ../patches/optional/0003-wbfm-channelizer.patch)`.
+  A worked example of putting
   custom DSP into the AD9361 chain. It adds `ad_fs4_ddc.v` (an Fs/4 frequency
   shifter) ahead of `rx_fir_decimator` and repoints that filter at
   narrow-band FM channel coefficients, turning RX channel 0 into a

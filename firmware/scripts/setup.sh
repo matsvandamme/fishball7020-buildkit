@@ -58,6 +58,12 @@ else
 fi
 
 cd "$SRC_DIR"
+# Only the top level of patches/ is applied automatically. patches/optional/
+# holds worked examples that CHANGE what the radio does rather than fixing it -
+# the FM channelizer narrows RX channel 0 to a single 200 kHz broadcast channel,
+# which is the last thing you want on a general-purpose build. Apply those by
+# hand when you want them:
+#     (cd src && git apply ../patches/optional/0003-wbfm-channelizer.patch)
 echo "=== Applying patches ==="
 for p in "$FW1_DIR"/patches/*.patch; do
     echo "  -> $(basename "$p")"
@@ -73,6 +79,13 @@ for p in "$FW1_DIR"/patches/*.patch; do
         exit 1
     fi
 done
+
+if ls "$FW1_DIR"/patches/optional/*.patch >/dev/null 2>&1; then
+    echo "=== Optional patches NOT applied (worked examples; apply by hand) ==="
+    for p in "$FW1_DIR"/patches/optional/*.patch; do
+        echo "  -- $(basename "$p")"
+    done
+fi
 
 echo
 echo "=== Done. Source tree ready at $SRC_DIR ==="

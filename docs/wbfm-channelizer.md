@@ -124,7 +124,7 @@ introduced, but easy to trip over.
 |---|---|
 | `firmware/src/hdl/projects/pluto/ad_fs4_ddc.v` | the Fs/4 shifter |
 | `firmware/src/hdl/projects/pluto/system_bd.tcl` | wires it in, repoints the coefficients |
-| `firmware/patches/0003-wbfm-channelizer.patch` | both of the above, so a clean `setup.sh` reproduces them |
+| `firmware/patches/optional/0003-wbfm-channelizer.patch` | both of the above; **opt-in**, `setup.sh` does not apply it |
 | `firmware/scripts/gen_fir_coe.py` | designs and verifies the coefficients (no MATLAB needed) |
 | `firmware/scripts/coefile_wbfm_102100.coe` | its output, 321 taps |
 | `docs/grc/fishball_wbfm_rx.grc` | the receiver, with no software channel filter left in it |
@@ -173,7 +173,11 @@ build will quietly produce the old filter:
 
 ```bash
 # run from: firmware/
-./scripts/setup.sh          # if src/ does not exist yet; applies patches/
+./scripts/setup.sh          # if src/ does not exist yet
+
+# This example is NOT applied by default - it narrows RX channel 0 to one
+# broadcast channel, which is not what a general-purpose build should do.
+(cd src && git apply ../patches/optional/0003-wbfm-channelizer.patch)
 rm -rf src/hdl/projects/pluto/pluto.{xpr,cache,gen,hw,ip_user_files,runs,sim,srcs,sdk}
 ./scripts/build_all.sh --hdl-only
 ```

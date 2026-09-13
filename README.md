@@ -764,7 +764,9 @@ fishball7020-fpga-devkit/
     ├── patches/
     │   ├── 0001-fishball7020-fixes.patch        6 real fixes (see firmware README for details)
     │   ├── 0002-add-fishball-devicetree.patch   the board's actual device tree, as source
-    │   └── 0003-wbfm-channelizer.patch          the FM channelizer worked example (docs/wbfm-channelizer.md)
+    │   ├── 0004-mute-tx-when-no-dma-stream.patch TX safeguard (see Transmitter safety)
+    │   └── optional/                             NOT applied by setup.sh — worked examples
+    │       └── 0003-wbfm-channelizer.patch      the FM channelizer (docs/wbfm-channelizer.md)
     ├── scripts/
     │   ├── setup.sh                    (run once) clones upstream source into src/, applies patches/
     │   ├── build_all.sh                (run every time) full build → output/
