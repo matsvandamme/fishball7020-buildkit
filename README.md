@@ -93,6 +93,7 @@ unable to boot. Before you touch anything:
 **Software** (Ubuntu 22.04 LTS; install before step 1):
 
 ```bash
+# run on your HOST, from anywhere
 sudo apt update
 sudo apt install -y git build-essential bison flex libssl-dev \
     device-tree-compiler u-boot-tools dfu-util screen \
@@ -161,6 +162,7 @@ license** — no purchase or license file needed.
    self-extracting `.bin` file.
 3. Run it:
    ```bash
+   # run from: wherever you downloaded the installer (e.g. ~/Downloads)
    chmod +x Xilinx_Unified_2022.2_*.bin
    ./Xilinx_Unified_2022.2_*.bin
    ```
@@ -188,9 +190,18 @@ instead of Vivado's own `settings64.sh`**, in any shell where you'll run
 ## 2. Get the firmware source
 
 ```bash
-cd firmware
+# run from: wherever you want the devkit to live (e.g. ~)
+git clone https://github.com/matsvandamme/fishball7020-fpga-devkit.git
+cd fishball7020-fpga-devkit/firmware
 ./scripts/setup.sh
 ```
+
+> **Where to run things:** from here on, every command runs from the
+> **`firmware/`** directory unless the code block says otherwise —
+> that's where `scripts/`, `patches/`, `src/` and `output/` live. Each
+> block states its directory on the first line so you can never be in
+> doubt. Commands that run *on the board itself* (over the serial
+> console) are marked as such.
 
 This clones the upstream source (a Zynq-7020 port of Analog Devices'
 `plutosdr-fw`) into `src/` and applies this repo's `patches/` on top —
@@ -202,7 +213,8 @@ your machine; re-run `setup.sh` any time you want a clean slate.
 ## 3. Open the block diagram
 
 ```bash
-source ../tools/env-vivado.sh          # from firmware/
+# run from: firmware/
+source ../tools/env-vivado.sh
 cd src/hdl/projects/pluto
 vivado pluto.xpr
 ```
@@ -291,6 +303,7 @@ through to `BOOT.bin`. Three things to do first:
    `build_all.sh` runs Vivado in batch mode against the same files.
 
 ```bash
+# run from: firmware/
 ./scripts/build_all.sh
 ```
 
@@ -302,6 +315,7 @@ long-term (or share it) port it into `system_bd.tcl` and add it to
 ## 5. Build the firmware
 
 ```bash
+# run from: firmware/
 ./scripts/build_all.sh
 ```
 
@@ -337,7 +351,8 @@ Format a microSD card as a single FAT32 partition, then copy all five
 files from `output/` onto it:
 
 ```bash
-cp firmware/output/{BOOT.bin,devicetree.dtb,uEnv.txt,uImage,uramdisk.image.gz} /path/to/sd-card/
+# run from: firmware/
+cp output/{BOOT.bin,devicetree.dtb,uEnv.txt,uImage,uramdisk.image.gz} /path/to/sd-card/
 ```
 
 Eject it, insert it into the board, and power-cycle. This is the only
@@ -366,8 +381,8 @@ ideal for iterating on the kernel or rootfs without touching the SD card.
    the console).
 3. From your host:
    ```bash
+   # run from: firmware/output/  (on your HOST, not the board)
    dfu-util -l   # confirms you can see uImage / devicetree.dtb / uramdisk.image.gz
-   cd firmware/output
    dfu-util -D uImage             -a uImage
    dfu-util -D devicetree.dtb     -a devicetree.dtb
    dfu-util -D uramdisk.image.gz  -a uramdisk.image.gz
@@ -391,6 +406,7 @@ USB connections that are easy to mix up:
 For everyday use, connect to the board's normal USB port:
 
 ```bash
+# run on your HOST, from anywhere
 screen /dev/ttyACM0 115200
 ```
 (Press Enter for a login prompt: `root`, no password. To exit `screen`
@@ -400,9 +416,12 @@ If you're on the debug header instead, try `/dev/ttyUSB1` first, then
 `/dev/ttyUSB0` if that one's silent or garbled — which channel carries
 the console vs. JTAG depends on the header wiring.
 
-Then confirm your build, not stock/vendor firmware, is running:
+Then confirm your build, not stock/vendor firmware, is running. **This one
+runs on the board**, at the `#` prompt inside the serial console — not on
+your host:
 
 ```
+# on the BOARD (inside the screen session)
 cat /opt/VERSIONS
 ```
 
@@ -456,7 +475,8 @@ tree.
   discarding the stale build state — the download cache is unaffected, so
   nothing is re-downloaded:
   ```bash
-  rm -rf firmware/src/buildroot/output
+  # run from: firmware/
+  rm -rf src/buildroot/output
   ./scripts/build_all.sh
   ```
   This also rebuilds the cross-toolchain, so expect the full build time.
