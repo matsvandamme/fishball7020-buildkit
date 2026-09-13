@@ -27,6 +27,35 @@ if [ ! -d "$SRC_DIR" ]; then
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Preflight. This build takes the better part of an hour and the stages that
+# need a given tool are spread across all of it - the FSBL stage, for example,
+# is ~40 minutes in. Discovering a missing package there is miserable, so
+# check everything up front and fail in two seconds instead.
+# ---------------------------------------------------------------------------
+preflight_fail=0
+for c in git make dtc mkimage bison flex python3; do
+    command -v "$c" >/dev/null 2>&1 || {
+        echo "ERROR: '$c' not found." >&2; preflight_fail=1; }
+done
+for f in /tools/Xilinx/Vivado/2022.2/bin/vivado \
+         /tools/Xilinx/Vitis/2022.2/bin/xsct \
+         /tools/Xilinx/Vitis/2022.2/bin/bootgen; do
+    [ -x "$f" ] || { echo "ERROR: missing $f (is Vivado/Vitis 2022.2 installed?)" >&2
+                     preflight_fail=1; }
+done
+# xsct needs an X display. With a desktop session ($DISPLAY set) it uses that;
+# headless - over SSH, in CI, on a server - it falls back to Xvfb, and without
+# Xvfb installed it dies at stage 2 with a bare "Xvfb is not available".
+if [ -z "${DISPLAY:-}" ] && ! command -v Xvfb >/dev/null 2>&1; then
+    echo "ERROR: no \$DISPLAY and Xvfb is not installed." >&2
+    echo "       Vitis (xsct) needs one or the other to build the FSBL." >&2
+    echo "       Headless/over SSH:  sudo apt install -y xvfb" >&2
+    echo "       Or, if a desktop is running on this machine:  export DISPLAY=:0" >&2
+    preflight_fail=1
+fi
+[ "$preflight_fail" -eq 0 ] || { echo "Preflight failed - fix the above and re-run." >&2; exit 1; }
+
 export CROSS_COMPILE=arm-linux-gnueabihf-
 
 # IMPORTANT: Vivado's own settings64.sh (sourced by tools/env-vivado.sh)

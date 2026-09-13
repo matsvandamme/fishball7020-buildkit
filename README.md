@@ -120,7 +120,7 @@ Copy all five onto a FAT32 SD card, insert, power on. Then jump to
 # run on your HOST, from anywhere
 sudo apt update
 sudo apt install -y git build-essential bison flex libssl-dev \
-    device-tree-compiler u-boot-tools dfu-util screen python3
+    device-tree-compiler u-boot-tools dfu-util screen python3 xvfb
 ```
 
 - **No extra GCC needed on 22.04.** Jammy's default GCC 11 builds
@@ -134,6 +134,12 @@ sudo apt install -y git build-essential bison flex libssl-dev \
   build the device tree and the ramdisk image.
 - `dfu-util` and `screen` are only needed if you'll flash/debug over USB
   (steps 6B/7) rather than by copying files to an SD card.
+- **`xvfb` matters if you build headless** — over SSH, in CI, or on a box
+  with no desktop. Vitis (`xsct`) needs an X display to build the FSBL: it
+  uses `$DISPLAY` if one is set, and otherwise falls back to Xvfb. Without
+  either, the build dies at stage 2 with a bare
+  `ERROR: Xvfb is not available on the system`. `build_all.sh` now checks
+  for this up front rather than letting you discover it 40 minutes in.
 
 ## 1. Install Vivado/Vitis 2022.2
 
