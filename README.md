@@ -83,6 +83,24 @@ unable to boot. Before you touch anything:
    USB isn't possible — an SD card swap back to the stock files (or a
    known-good build) is the only way back at that point.
 
+### If you have no backup: the vendor's factory firmware
+
+If you skipped the backup, or lost it, the distributor publishes the
+board's prebuilt factory firmware here:
+
+**[`OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR`](https://github.com/OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR)**
+
+This is a genuine known-good fallback, not a guess: during this project the
+binaries in that repo were compared byte-for-byte against a working unit's
+SD card and confirmed as the real source of this board's factory firmware.
+Copy its SD-card files onto a FAT32 card exactly as in
+[Option A](#option-a--sd-card-always-works) and the board returns to its
+shipped state.
+
+Keep a copy locally *before* you start experimenting — a rescue that needs
+a working internet connection and a third-party repo still being online is
+a weaker safety net than a folder on your own disk.
+
 ## Prerequisites
 
 **Hardware:**
@@ -404,8 +422,13 @@ does **not** update `BOOT.bin`, so it's for testing, not deployment.
 USB 2.0 port connected as well if that's what powers your board.
 
 **One-time setup.** Vivado ships udev rules for Digilent cables but doesn't
-install them, so the kernel claims the JTAG interface as a serial port and
-Vivado can't see the target:
+install them. Without them the USB node stays `crw-rw-r-- root root`, so
+libusb can't claim the device and Vivado reports
+`ERROR: [Labtoolstcl 44-199] No matching targets found`.
+
+Run this **in a real terminal on the machine the board is plugged into** —
+`sudo` needs a TTY, so it won't work through an IDE/agent shell, and rules
+installed inside a VM have no effect on the host:
 
 ```bash
 # run on your HOST, from anywhere
@@ -415,12 +438,30 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-Unplug and replug the debug cable, then confirm Vivado sees it:
+Now **unplug and replug the debug cable**, and verify (neither needs sudo):
+
+```bash
+# run on your HOST, from anywhere
+ls /etc/udev/rules.d/ | grep xilinx
+ls -la /dev/bus/usb/003/$(lsusb | grep 0403:6010 | sed -E 's/.*Device ([0-9]+).*/\1/')
+```
+
+You want two `.rules` files listed, and permissions **`crw-rw-rw-`** (three
+`rw` groups). Then confirm Vivado sees the cable:
 
 ```tcl
 open_hw_manager
 connect_hw_server
 get_hw_targets
+open_hw_target
+get_hw_devices
+```
+
+Expected — the Digilent cable, then the Zynq's ARM debug port and the PL:
+
+```
+localhost:3121/xilinx_tcf/Digilent/000000000069A
+arm_dap_0 xc7z020_1
 ```
 
 **Stop the board in U-Boot before programming.** This matters: if Linux is
@@ -446,6 +487,16 @@ anything yet.
    ```
 
 3. Back at `Zynq>`, type `boot`. Linux comes up against your new PL.
+
+**How to know it worked:** programming prints the FPGA's DONE pin going
+high —
+
+```
+INFO: [Labtools 27-3164] End of startup status: HIGH
+```
+
+That line is the success indicator. If it says `LOW`, the bitstream didn't
+take (wrong file, or the device was reset mid-programming).
 
 When the design is working, rebuild properly (`build_all.sh`) and flash via
 Option A so it persists.
