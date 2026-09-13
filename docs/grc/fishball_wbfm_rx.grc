@@ -6,7 +6,7 @@ options:
     cmake_opt: ''
     comment: ''
     copyright: ''
-    description: WBFM receiver for the Fishball7020 SDR, using the FPGA channel filter
+    description: WBFM receiver whose channel filtering happens entirely in the FPGA
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
@@ -22,7 +22,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: Fishball7020 WBFM Receiver
+    title: Fishball7020 WBFM Receiver (FPGA channelizer)
     window_size: (1400,900)
   states:
     bus_sink: false
@@ -33,41 +33,53 @@ options:
     state: enabled
 
 blocks:
-- name: samp_rate
+- name: uri
   id: variable
   parameters:
-    comment: 'Hardware rate. The FPGA FIR scales with this: passband = 0.048 * samp_rate.
-      At 2.304 MSPS that is +/-110 kHz, one WBFM channel.'
-    value: '2304000'
+    comment: '192.168.2.1 is the network-over-USB gadget (see the README). Use
+      the board''s RJ45 address instead if you are on wired Ethernet, or usb: for
+      the raw USB backend.'
+    value: '''ip:192.168.2.1'''
   states:
     coordinate: [16, 100]
     rotation: 0
     state: enabled
-- name: decim
+- name: samp_rate
   id: variable
   parameters:
-    comment: 2304000 / 8 = 288000
-    value: '8'
+    comment: 'AD9361 rate. Chosen so the wanted channel lands on exactly Fs/4,
+      which makes the FPGA frequency shift multiplier-free. Do not change this
+      without regenerating the FPGA coefficients.'
+    value: '4224000'
   states:
     coordinate: [120, 100]
+    rotation: 0
+    state: enabled
+- name: fpga_decim
+  id: variable
+  parameters:
+    comment: 4224000 / 8 = 528000. Done by rx_fir_decimator in the FPGA.
+    value: '8'
+  states:
+    coordinate: [248, 100]
     rotation: 0
     state: enabled
 - name: quad_rate
   id: variable
   parameters:
-    comment: ''
-    value: int(samp_rate/decim)
+    comment: What actually arrives over the link.
+    value: int(samp_rate/fpga_decim)
   states:
-    coordinate: [192, 100]
+    coordinate: [352, 100]
     rotation: 0
     state: enabled
 - name: audio_rate
   id: variable
   parameters:
-    comment: 288000 / 6 = 48000 exactly
+    comment: 528000 / 11 = 48000 exactly, so no resampler is needed anywhere.
     value: '48000'
   states:
-    coordinate: [296, 100]
+    coordinate: [480, 100]
     rotation: 0
     state: enabled
 - name: audio_decim
@@ -76,22 +88,43 @@ blocks:
     comment: ''
     value: int(quad_rate/audio_rate)
   states:
-    coordinate: [400, 100]
+    coordinate: [592, 100]
     rotation: 0
     state: enabled
-- name: freq
+- name: lo_offset
+  id: variable
+  parameters:
+    comment: 'Fs/4 = 1.056 MHz. The AD9361 is tuned this far BELOW the station so
+      its LO leakage and DC offset stay out of the audio; the FPGA shifts the
+      channel back to DC.'
+    value: int(samp_rate/4)
+  states:
+    coordinate: [704, 100]
+    rotation: 0
+    state: enabled
+- name: lo_freq
+  id: variable
+  parameters:
+    comment: What the AD9361 is actually tuned to.
+    value: int(station - lo_offset)
+  states:
+    coordinate: [832, 100]
+    rotation: 0
+    state: enabled
+- name: station
   id: variable_qtgui_range
   parameters:
-    comment: FM broadcast band
+    comment: 'Retuning works at runtime: the FPGA filter sits at DC, so it follows
+      the LO. 102.1 = Studio Brussel.'
     gui_hint: 0,0,1,1
-    label: Frequency (Hz)
+    label: Station (Hz)
     min_len: '200'
     orient: QtCore.Qt.Horizontal
     rangeType: float
     start: 87.5e6
     step: 100e3
     stop: 108e6
-    value: 100.1e6
+    value: 102.1e6
     widget: counter_slider
   states:
     coordinate: [16, 188]
@@ -152,20 +185,69 @@ blocks:
     rotation: 0
     state: enabled
 
+- name: force_hardware_rates
+  id: snippet
+  parameters:
+    alias: ''
+    code: |
+      import iio
+
+      # gr-iio programs the AD9361 itself, but the FPGA decimator is a separate IIO
+      # device attribute it does not know about - and asking libad9361 for 528 kSPS
+      # may make it slow the AD9361 down instead of engaging the FPGA. So set both
+      # explicitly, in this order: the converter rate first, then the FPGA
+      # decimation that divides it.
+      #
+      # Writing sampling_frequency on cf-ad9361-lpc is what drives GP_CONTROL bit 0,
+      # which selects the filtered path through the bypass mux in the bitstream.
+      # WITHOUT THIS THE SAMPLES ARRIVE UNFILTERED.
+      def _rate(dev, chan, hz):
+          _c = dev.find_channel(chan, False)
+          if _c is None:
+              raise RuntimeError(f"no input channel {chan} on {dev.name} - wrong firmware?")
+          _c.attrs["sampling_frequency"].value = str(int(hz))
+
+      _ctx = iio.Context(self.uri)
+      _phy = _ctx.find_device("ad9361-phy")
+      _adc = _ctx.find_device("cf-ad9361-lpc")
+      if _phy is None or _adc is None:
+          raise RuntimeError("ad9361-phy / cf-ad9361-lpc not found at " + str(self.uri))
+
+      _rate(_phy, "voltage0", self.samp_rate)
+      _rate(_adc, "voltage0", self.quad_rate)
+
+      # The Fs/4 trick only holds if the converter landed on the rate we asked for.
+      _got = int(_phy.find_channel("voltage0", False).attrs["sampling_frequency"].value)
+      if abs(_got - int(self.samp_rate)) > 1000:
+          print(f"WARNING: asked the AD9361 for {int(self.samp_rate)} Hz, got {_got} Hz.")
+          print("         The channel is no longer at exactly Fs/4 and will sit off-centre.")
+    comment: 'init_after_blocks, not main_after_init: this runs inside __init__
+      where the flowgraph is ''self'', straight after gr-iio has built the source
+      and configured the radio, and before start(). If a future gr-iio re-applies
+      its own rates on start(), move this to main_after_start and use tb instead
+      of self.'
+    priority: '0'
+    section: init_after_blocks
+  states:
+    coordinate: [1000, 188]
+    rotation: 0
+    state: enabled
+
 - name: iio_pluto_source_0
   id: iio_pluto_source
   parameters:
     affinity: ''
     alias: ''
-    bandwidth: '18000000'
+    bandwidth: '4000000'
     bbdc: 'True'
     buffer_size: '32768'
-    comment: 'RF bandwidth is the AD9361 ANALOG filter - leave it wide. The sharp
-      channel filtering is done by the FPGA FIR.'
+    comment: 'RF bandwidth is the AD9361 ANALOG filter. It must pass the channel at
+      +1.056 MHz, so it cannot be narrow - but keep it tight enough to spare the
+      ADC from the whole FM band.'
     filter: ''
     filter_source: '''Auto'''
     fpass: '0'
-    frequency: int(freq)
+    frequency: lo_freq
     fstop: '0'
     gain1: '''slow_attack'''
     len_tag_key: packet_len
@@ -174,15 +256,15 @@ blocks:
     minoutbuf: '0'
     quadrature: 'True'
     rfdc: 'True'
-    samplerate: samp_rate
+    samplerate: quad_rate
     type: fc32
-    uri: ip:192.168.2.1
+    uri: uri
   states:
-    coordinate: [16, 316]
+    coordinate: [16, 340]
     rotation: 0
     state: enabled
 
-- name: qtgui_freq_sink_rf
+- name: qtgui_freq_sink_bb
   id: qtgui_freq_sink_x
   parameters:
     affinity: ''
@@ -191,21 +273,22 @@ blocks:
     autoscale: 'False'
     average: '0.2'
     axislabels: 'True'
-    bw: samp_rate
+    bw: quad_rate
     color1: '"blue"'
-    comment: 'This view shows the FPGA filter directly: the shoulders at +/-110 kHz
-      are the hardware FIR, not anything GNU Radio is doing.'
+    comment: 'The proof the FPGA is doing its job: one channel filling +/-100 kHz
+      and noise floor either side. Centre frequency reads as the real station
+      frequency, because the FPGA has already shifted the channel to DC.'
     ctrlpanel: 'False'
-    fc: freq
+    fc: station
     fftsize: '4096'
     freqhalf: 'True'
     grid: 'True'
-    gui_hint: 2,0,3,2
-    label1: RF
+    gui_hint: 2,0,3,4
+    label1: Channel
     legend: 'True'
     maxoutbuf: '0'
     minoutbuf: '0'
-    name: '"1 - Radio output (FPGA filter visible here)"'
+    name: '"1 - FPGA channelizer output (528 kSPS)"'
     nconnections: '1'
     showports: 'False'
     tr_chan: '0'
@@ -220,30 +303,7 @@ blocks:
     ymax: '-20'
     ymin: '-140'
   states:
-    coordinate: [432, 236]
-    rotation: 0
-    state: enabled
-
-- name: low_pass_filter_0
-  id: low_pass_filter
-  parameters:
-    affinity: ''
-    alias: ''
-    beta: '6.76'
-    comment: 'Anti-alias guard for the decimation only. The FPGA already removed
-      everything past ~110 kHz, so this can be gentle.'
-    cutoff_freq: '100000'
-    decim: decim
-    gain: '1'
-    interp: '1'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    samp_rate: samp_rate
-    type: fir_filter_ccf
-    width: '30000'
-    win: window.WIN_HAMMING
-  states:
-    coordinate: [416, 404]
+    coordinate: [432, 260]
     rotation: 0
     state: enabled
 
@@ -261,48 +321,7 @@ blocks:
     threshold: squelch_db
     type: complex
   states:
-    coordinate: [680, 420]
-    rotation: 0
-    state: enabled
-
-- name: qtgui_freq_sink_bb
-  id: qtgui_freq_sink_x
-  parameters:
-    affinity: ''
-    alias: ''
-    alpha1: '1.0'
-    autoscale: 'False'
-    average: '0.2'
-    axislabels: 'True'
-    bw: quad_rate
-    color1: '"dark green"'
-    comment: ''
-    ctrlpanel: 'False'
-    fc: '0'
-    fftsize: '2048'
-    freqhalf: 'True'
-    grid: 'True'
-    gui_hint: 2,2,3,2
-    label1: Baseband
-    legend: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    name: '"2 - Demod input (288 kHz)"'
-    nconnections: '1'
-    showports: 'False'
-    tr_chan: '0'
-    tr_level: '0.0'
-    tr_mode: qtgui.TRIG_MODE_FREE
-    tr_tag: '""'
-    type: complex
-    units: dB
-    update_time: '0.10'
-    width1: '1'
-    wintype: window.WIN_BLACKMAN_hARRIS
-    ymax: '-20'
-    ymin: '-140'
-  states:
-    coordinate: [680, 292]
+    coordinate: [432, 428]
     rotation: 0
     state: enabled
 
@@ -312,12 +331,13 @@ blocks:
     affinity: ''
     alias: ''
     audio_decimation: audio_decim
-    comment: 288000 / 6 = 48000
+    comment: 'No software channel filter ahead of this block - the FPGA already
+      removed everything outside the channel.'
     maxoutbuf: '0'
     minoutbuf: '0'
     quad_rate: quad_rate
   states:
-    coordinate: [928, 420]
+    coordinate: [688, 428]
     rotation: 0
     state: enabled
 
@@ -333,7 +353,7 @@ blocks:
     type: float
     vlen: '1'
   states:
-    coordinate: [1120, 436]
+    coordinate: [928, 444]
     rotation: 0
     state: enabled
 
@@ -348,7 +368,7 @@ blocks:
     ok_to_block: 'True'
     samp_rate: audio_rate
   states:
-    coordinate: [1320, 436]
+    coordinate: [1176, 444]
     rotation: 0
     state: enabled
 
@@ -368,7 +388,7 @@ blocks:
     gui_hint: 5,0,2,4
     label1: Audio
     legend: 'False'
-    name: '"3 - Demodulated audio"'
+    name: '"2 - Demodulated audio"'
     nconnections: '1'
     size: '1024'
     srate: audio_rate
@@ -387,15 +407,13 @@ blocks:
     ymin: '-1.5'
     yunit: '""'
   states:
-    coordinate: [1120, 292]
+    coordinate: [928, 300]
     rotation: 0
     state: enabled
 
 connections:
-- [iio_pluto_source_0, '0', qtgui_freq_sink_rf, '0']
-- [iio_pluto_source_0, '0', low_pass_filter_0, '0']
-- [low_pass_filter_0, '0', analog_pwr_squelch_0, '0']
-- [low_pass_filter_0, '0', qtgui_freq_sink_bb, '0']
+- [iio_pluto_source_0, '0', qtgui_freq_sink_bb, '0']
+- [iio_pluto_source_0, '0', analog_pwr_squelch_0, '0']
 - [analog_pwr_squelch_0, '0', analog_wfm_rcv_0, '0']
 - [analog_wfm_rcv_0, '0', blocks_multiply_const_volume, '0']
 - [blocks_multiply_const_volume, '0', audio_sink_0, '0']
