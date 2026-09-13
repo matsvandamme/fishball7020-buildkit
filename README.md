@@ -334,9 +334,20 @@ filtering entirely:
   <your_block>/data_in` calls in `system_bd.tcl`), then reconnect to
   `cpack`'s `enable_2`/`fifo_wr_data_2` (and `_3` for Q).
 - **Channel 0** already routes through `rx_fir_decimator`/
-  `tx_fir_interpolator` (ADI's `util_fir_int` IP, instantiated via
-  `ad_add_decimation_filter`/`ad_add_interpolation_filter` in
-  `system_bd.tcl`, coefficients from `library/util_fir_int/coefile_int.coe`).
+  `tx_fir_interpolator` — 129-tap FIR filters that decimate by 8 on RX and
+  interpolate by 8 on TX. They're built by the
+  `ad_add_decimation_filter`/`ad_add_interpolation_filter` helpers called in
+  `system_bd.tcl`, which instantiate **Xilinx's `fir_compiler` IP** directly
+  and load taps from `library/util_fir_int/coefile_int.coe`.
+
+  > **Don't be misled by `library/util_fir_int/` and `library/util_fir_dec/`.**
+  > Neither has a `component.xml`, so neither is ever packaged or
+  > instantiated — the `.v` files in them are dead code in this project. The
+  > *only* thing used from those directories is `coefile_int.coe`. Note also
+  > that the RX decimator and the TX interpolator are passed **the same**
+  > coefficient file, so editing it in place changes both; point one of them
+  > at a new file if you only mean to change that direction.
+
   Insert before these blocks (raw, full-rate samples) or after (post-filter,
   right before `cpack`/after `tx_upack`) — or just replace the `.coe`
   coefficient file to change the filter's response without touching any
