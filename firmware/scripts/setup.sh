@@ -28,6 +28,18 @@ if [ -d "$SRC_DIR/.git" ]; then
         echo "WARNING: $SRC_DIR is at $current, not the pinned $UPSTREAM_COMMIT."
         echo "         Patches may fail to apply or apply against different code."
     fi
+    # A clone that was interrupted (machine rebooted, disk full, Ctrl-C) leaves
+    # .git and the right HEAD behind, so the commit check above passes - but the
+    # working tree is half-populated and the index is full of staged deletions.
+    # Patching that produces a confusing cascade of failures a long way from the
+    # real cause, so detect it here and say plainly what to do.
+    if (cd "$SRC_DIR" && git status --porcelain | grep -q '^D '); then
+        echo "ERROR: $SRC_DIR looks like an interrupted checkout - tracked files are" >&2
+        echo "       missing from the working tree. This is not recoverable in place." >&2
+        echo "       Delete it and run setup.sh again:" >&2
+        echo "           rm -rf \"$SRC_DIR\" && ./scripts/setup.sh" >&2
+        exit 1
+    fi
 else
     echo "=== Cloning $UPSTREAM_URL ==="
     git clone "$UPSTREAM_URL" "$SRC_DIR"
