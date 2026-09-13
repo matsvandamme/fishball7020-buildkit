@@ -393,17 +393,83 @@ ideal for iterating on the kernel or rootfs without touching the SD card.
    Zynq> reset
    ```
 
+### Option C — JTAG (temporary, but the fastest HDL loop)
+
+For iterating on PL changes you can push a bitstream straight into the FPGA
+over JTAG — seconds, instead of a full `build_all.sh` plus reflash. Two
+things to be clear about: it is **volatile** (gone on power-cycle) and it
+does **not** update `BOOT.bin`, so it's for testing, not deployment.
+
+**Use the debug port** — JTAG is interface 0 on that connector. Keep the
+USB 2.0 port connected as well if that's what powers your board.
+
+**One-time setup.** Vivado ships udev rules for Digilent cables but doesn't
+install them, so the kernel claims the JTAG interface as a serial port and
+Vivado can't see the target:
+
+```bash
+# run on your HOST, from anywhere
+sudo cp /tools/Xilinx/Vivado/2022.2/data/xicom/cable_drivers/lin64/install_script/install_drivers/*.rules \
+        /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+Unplug and replug the debug cable, then confirm Vivado sees it:
+
+```tcl
+open_hw_manager
+connect_hw_server
+get_hw_targets
+```
+
+**Stop the board in U-Boot before programming.** This matters: if Linux is
+already running, its drivers (`ad9361`, the DMAs) are bound to the *old* PL,
+and swapping the bitstream underneath them will break or hang the system.
+Halting at U-Boot means the FSBL has set up the PS but Linux hasn't claimed
+anything yet.
+
+1. Open the debug UART console, power-cycle, press a key within 3 s to stop
+   at the `Zynq>` prompt.
+2. Program the device — in the GUI: **Open Hardware Manager → Auto Connect
+   → right-click `xc7z020_1` → Program Device**. Or scripted:
+
+   ```tcl
+   open_hw_manager
+   connect_hw_server
+   open_hw_target
+   current_hw_device [get_hw_devices xc7z020_1]
+   set_property PROGRAM.FILE \
+     {<repo>/firmware/src/hdl/projects/pluto/pluto.runs/impl_1/system_top.bit} \
+     [current_hw_device]
+   program_hw_devices [current_hw_device]
+   ```
+
+3. Back at `Zynq>`, type `boot`. Linux comes up against your new PL.
+
+When the design is working, rebuild properly (`build_all.sh`) and flash via
+Option A so it persists.
+
 ## 7. Verify your build is actually running
 
-**Which USB port is which:** this board exposes two completely different
-USB connections that are easy to mix up:
+**Which USB port is which** — the board has two, and they do completely
+different things:
 
-| Port | Enumerates as | What it's for |
+| | **USB 2.0 (OTG) port** | **Debug port** |
 |---|---|---|
-| The board's own USB-OTG port | `0456:b673` (Analog Devices/ADALM-PLUTO), typically `/dev/ttyACM*` | Normal operation: network-over-USB (`192.168.2.1`), the board's own USB console |
-| The debug header (if populated) | FTDI `0403:6010` dual UART, typically **two** `/dev/ttyUSB*` devices | JTAG-over-UART + a second UART console — only relevant if you're debugging at the FSBL/U-Boot level before the OTG port is even up |
+| Enumerates as | `0456:b673` Analog Devices, typically `/dev/ttyACM*` (`-if03`) | `0403:6010` **Digilent Adept**, two `/dev/ttyUSB*` |
+| Gives you | Network-over-USB (`192.168.2.1`), libiio / `iio_info`, mass storage, a console | **JTAG** (`-if00`) and the board's **real UART console** (`-if01`) |
+| Available | Only **after Linux boots** — it's a USB gadget *created by* the board's own Linux | From **power-on** — real hardware, independent of software |
 
-For everyday use, connect to the board's normal USB port:
+**For serial, use the debug port.** Its UART is the board's actual console
+(`ttyPS0`), so you see the whole sequence: FSBL → U-Boot → kernel → login.
+The OTG port's `ttyACM*` console only appears once Linux has booted far
+enough to bring up the USB gadget — so you miss the entire boot, and see
+nothing at all if the board fails to boot, which is precisely when you
+need the console most.
+
+With Digilent Adept, **`-if00` is JTAG and `-if01` is the UART**, so the
+console is the `-if01` device (typically `/dev/ttyUSB1`).
 
 **First, find the port.** Don't assume `/dev/ttyACM0` — the number depends
 on what else is plugged into your machine. List the serial devices by their
@@ -414,21 +480,25 @@ stable, self-describing names:
 ls -l /dev/serial/by-id/
 ```
 
-You're looking for the Analog Devices entry, e.g.:
+On the **debug port** you'll see two entries — take the `-if01` one:
+
+```
+usb-Digilent_Digilent_Adept_USB_Device_<serial>-if00-port0 -> ../../ttyUSB0   <- JTAG
+usb-Digilent_Digilent_Adept_USB_Device_<serial>-if01-port0 -> ../../ttyUSB1   <- console
+```
+
+On the **USB 2.0 port** (post-boot console only) it appears instead as:
 
 ```
 usb-Analog_Devices_Inc._PlutoSDR__ADALM-PLUTO_-if03 -> ../../ttyACM0
 ```
 
-(If you're on the FTDI debug header instead, it shows up as
-`usb-FTDI_...-if00` and `-if01` pointing at `ttyUSB*`.)
-
 **Then connect.** Use the `by-id` path directly — it's stable across
-reboots and replugs, unlike the `ttyACM*` number:
+reboots and replugs, unlike the `ttyUSB*`/`ttyACM*` number:
 
 ```bash
-# run on your HOST, from anywhere
-screen /dev/serial/by-id/usb-Analog_Devices_Inc._PlutoSDR__ADALM-PLUTO_-if03 115200
+# run on your HOST, from anywhere (substitute your own serial number)
+screen /dev/serial/by-id/usb-Digilent_Digilent_Adept_USB_Device_<serial>-if01-port0 115200
 ```
 
 (Tab-completion works on that path. If `/dev/serial/by-id/` doesn't exist
