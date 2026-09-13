@@ -110,6 +110,7 @@ login prompt — no prior knowledge assumed.
   [7. Verify](#7-verify-your-build-is-actually-running)
 - [Repository layout](#repository-layout)
 - [How it works](docs/how-it-works.md) — the boot chain explained from scratch
+- [Controlling the USER LED](docs/user-led.md) — for custom projects
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist) ·
   [Vendor resources](#vendor-resources) · [License](#license)
@@ -164,7 +165,7 @@ Three indicators sit between the two USB ports:
 |---|---|
 | `PWR` | Power present |
 | `DONE` | FPGA configured successfully — the same DONE signal Vivado reports as `End of startup status: HIGH` |
-| `USER` | Driven by the firmware; blinks once Linux is up and running |
+| `USER` | Driven by Linux (PS GPIO). Blinks by default via the kernel's heartbeat trigger — [how to control it](docs/user-led.md) |
 
 Source: the distributor's own
 [PlutoSky R1 write-up](https://blog.opensourcesdrlab.com/archives/PlutoSky-R1),
