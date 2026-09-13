@@ -89,6 +89,31 @@ Firmware/` dump pulled from a real unit:
   get the stock wideband datapath back. See
   [docs/wbfm-channelizer.md](../docs/wbfm-channelizer.md).
 
+- **`0004-mute-tx-when-no-dma-stream.patch`** — mutes the AD9361's transmit
+  chain whenever no TX DMA buffer is streaming.
+
+  The chip keeps its transmit chain biased for as long as the ENSM is in FDD,
+  which it is from power-on, whether or not anything feeds the DAC. When a TX
+  buffer is torn down, `cf_axi_dds_buffer_stream.c` only reverts the baseband
+  source to the (silent) DDS: the mixer and output stage stay powered, keep
+  emitting LO leakage and keep dissipating power. Measured on a real board at
+  boot: ENSM `fdd`, TX LO running, and just 10 dB of attenuation.
+
+  The fix hooks the buffer lifecycle the driver already has — `preenable`
+  unmutes, `postdisable` mutes — and calls `ad9361_tx_mute()`, ADI's own
+  exported helper, which was present in the tree but called from nowhere. It
+  caches both channels' attenuation and restores it on unmute, so a chosen TX
+  gain survives a stream. The IIO core runs `postdisable` on buffer teardown
+  even when the application crashed or was killed, which is what makes this a
+  guarantee rather than best effort.
+
+  Two details worth knowing. `ad9361_tx_mute()`'s attenuation cache reads zero
+  until the first mute, so an unmute that was never preceded by a mute would
+  set 0 dB attenuation and key the transmitter at full output — hence the
+  `tx_muted` flag and the mute at probe. And the phy is reached through the
+  DDS node's existing `clocks` phandle, so **no device tree change is needed**
+  and `devicetree.dtb` stays byte-identical.
+
 ## Build system internals
 
 `scripts/build_all.sh` deliberately does **not** just call upstream's own

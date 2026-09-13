@@ -54,6 +54,10 @@ required either way.
   own HDL directly into the AD9361 datapath.
 - **Three ways onto the board** — SD card, DFU over USB, or JTAG for a
   seconds-long iteration loop instead of a full rebuild.
+- **The transmitter is off unless you are transmitting** — stock firmware
+  leaves the AD9361's TX chain biased from power-on, radiating LO leakage with
+  nothing in the DAC. This build mutes it whenever no TX buffer is streaming.
+  See [Transmitter safety](#transmitter-safety).
 - **Your changes are reproducible** — they live in `patches/`, so a clean
   clone rebuilds them on any machine.
 - **Free toolchain** — the XC7Z020 is covered by Vivado's no-cost WebPACK
@@ -111,6 +115,7 @@ login prompt — no prior knowledge assumed.
 - [Repository layout](#repository-layout)
 - [How it works](docs/how-it-works.md) — the boot chain explained from scratch
 - [Worked example: an FM channelizer in the FPGA](docs/wbfm-channelizer.md)
+- [Transmitter safety](#transmitter-safety) — TX is muted when nothing is being sent
 - [Controlling the USER LED](docs/user-led.md) — for custom projects
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist) ·
@@ -787,6 +792,49 @@ fishball7020-fpga-devkit/
         ├── uImage                       the Linux kernel
         └── uramdisk.image.gz            the root filesystem
 ```
+
+## Transmitter safety
+
+**Stock firmware leaves the transmitter running.** Measured on a real board at
+power-on: the AD9361 comes up in ENSM `fdd` with the TX synthesiser going and
+only 10 dB of attenuation, so the TX port emits LO leakage continuously — with
+nothing in the DAC DMA, no DDS tone, and nobody having asked to transmit. When
+a transmission ends, ADI's driver reverts the baseband source to a silent DDS
+but leaves the chain biased, so it goes straight back to idling hot.
+
+That is not a damage risk on its own: the AD9361's own output tops out near
++7 dBm with no external PA, and its outputs tolerate an open or short. But
+there is no reason to keep a transmitter energised that you are not using, and
+it warms a die that already sits above 50 °C.
+
+**This build fixes it in firmware.** `patches/0004-mute-tx-when-no-dma-stream.patch`
+hooks the TX buffer lifecycle the DAC driver already has:
+
+| Event | What happens |
+|---|---|
+| driver probe | TX muted — so the board is quiet from boot |
+| a TX buffer starts streaming | TX unmuted, restoring **your** attenuation |
+| the buffer stops | TX muted again, automatically |
+
+It works by calling `ad9361_tx_mute()`, ADI's own exported helper, which was
+present in the kernel tree but called from nowhere. It caches both channels'
+attenuation and restores exactly what was there, so a transmit gain you chose
+survives a stream.
+
+The part that makes this a guarantee rather than best effort: the IIO core runs
+the buffer's `postdisable` hook on teardown **even when the application crashed
+or was killed**, because teardown happens on file close. A userspace watchdog
+could never promise that.
+
+No device tree change was needed — the driver finds the phy through the DDS
+node's existing `clocks` phandle — so `devicetree.dtb` stays byte-identical to
+the factory firmware.
+
+> **Careful with a TX→RX loopback cable.** The receiver is the fragile end: the
+> AD9361's RX input is rated to roughly **+2.5 dBm**, while its transmitter can
+> reach about **+7 dBm** at 0 dB attenuation. Connect the cable with TX
+> attenuation at maximum, fit an inline 20–30 dB attenuator if you have one,
+> and raise the power in steps.
 
 ## Troubleshooting
 

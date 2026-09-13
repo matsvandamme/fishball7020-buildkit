@@ -1,0 +1,222 @@
+diff --git a/buildroot/board/pluto/S21misc b/buildroot/board/pluto/S21misc
+index 28c5739ff..9fc6cffd8 100755
+--- a/buildroot/board/pluto/S21misc
++++ b/buildroot/board/pluto/S21misc
+@@ -14,6 +14,36 @@ xo_correction() {
+ }
+ 
+ 
++tx_quiesce() {
++
++	# Quiet the transmitter before anything has streamed.
++	#
++	# The AD9361 comes up in ENSM 'fdd' with the TX chain biased and only
++	# 10 dB of attenuation (adi,tx-attenuation-mdB), so the TX port emits LO
++	# leakage from power-on with nothing in the DAC DMA. There is no device
++	# tree property that fixes this, so set it here.
++	#
++	# Attenuation ONLY - deliberately not the TX LO. From here on the kernel
++	# owns TX muting (see patches/0004): it unmutes when a TX DMA buffer
++	# starts and re-mutes when it stops. Powering the synthesiser down here
++	# would leave a later stream transmitting into a dead LO, silently.
++	#
++	# Set tx_quiesce=0 in the U-Boot environment to skip this:
++	#   fw_setenv tx_quiesce 0
++
++	[ "`fw_printenv -n tx_quiesce 2> /dev/null`" = "0" ] && return
++
++	for dev in /sys/bus/iio/devices/*; do
++		[ `cat ${dev}/name` == "ad9361-phy" ] && PHY_DEV=${dev}
++	done
++	[ -z "${PHY_DEV}" ] && return
++
++	for f in ${PHY_DEV}/out_voltage0_hardwaregain ${PHY_DEV}/out_voltage1_hardwaregain; do
++		[ -w "${f}" ] && echo -89.75 > ${f}
++	done
++}
++
++
+ case "$1" in
+ 	start|"")
+ 		echo -n "Starting miscellaneous setup: "
+@@ -22,6 +52,7 @@ case "$1" in
+ 		[[ -d /mnt/jffs2/etc/dropbear ]] && cd /mnt/jffs2/etc/dropbear && md5sum -s -c keys.md5 && cp dropbear* /etc/dropbear/
+ 		[[ -d /mnt/jffs2/root/.ssh ]] && cd /mnt/jffs2/root/.ssh && md5sum -s -c keys.md5 && mkdir /root/.ssh && cp authorized_keys /root/.ssh
+ 		xo_correction
++		tx_quiesce
+ 		MAX_BS=`fw_printenv -n iio_max_block_size 2> /dev/null || echo 67108864`
+ 		echo ${MAX_BS} > /sys/module/industrialio_buffer_dma/parameters/max_block_size
+ 		[ $? = 0 ] && echo "OK" || echo "FAIL"
+diff --git a/linux/drivers/iio/frequency/cf_axi_dds.c b/linux/drivers/iio/frequency/cf_axi_dds.c
+index ceb133a50..1b5801000 100755
+--- a/linux/drivers/iio/frequency/cf_axi_dds.c
++++ b/linux/drivers/iio/frequency/cf_axi_dds.c
+@@ -39,6 +39,11 @@
+ #include <linux/jesd204/adi-common.h>
+ 
+ #include "cf_axi_dds.h"
++#if IS_ENABLED(CONFIG_AD9361)
++/* ad9361.h embeds struct clk_hw / clk_onecell_data by value. */
++#include <linux/clk-provider.h>
++#include "../adc/ad9361.h"
++#endif
+ #include "ad9122.h"
+ #include "../../misc/adi-axi-data-offload.h"
+ 
+@@ -112,6 +117,14 @@ struct cf_axi_dds_state {
+ 	 */
+ 	struct mutex			lock;
+ 	bool				standalone;
++	/*
++	 * Set when this driver has muted the transmitter because no TX buffer
++	 * is streaming. Tracked rather than inferred because ad9361_tx_mute()
++	 * restores a CACHED attenuation, and that cache reads zero until the
++	 * first mute - unmuting without a prior mute would set 0 dB
++	 * attenuation, i.e. key the transmitter at full output.
++	 */
++	bool				tx_muted;
+ 	bool				dp_disable;
+ 	bool				enable;
+ 	bool				pl_dma_fifo_en;
+@@ -1035,6 +1048,77 @@ static int cf_axi_dds_reg_access(struct iio_dev *indio_dev,
+ 	return ret;
+ }
+ 
++/*
++ * Gate the AD9361's transmit chain on whether a TX buffer is actually
++ * streaming.
++ *
++ * The AD9361 keeps its transmit chain biased for as long as the ENSM is in
++ * FDD, whether or not anything is feeding the DAC. When a TX buffer is torn
++ * down the DDS driver only reverts the baseband source to the (silent) DDS -
++ * the mixer and output stage stay powered, keep emitting LO leakage and keep
++ * dissipating power until something attenuates them. Nothing did.
++ *
++ * ad9361_tx_mute() is ADI's own exported helper and is otherwise unused: it
++ * caches both channels' attenuation, sets 89.75 dB, and restores exactly what
++ * was there on unmute, so a user's chosen TX gain survives a stream.
++ *
++ * The phy is reached through the "clocks" phandle, which already points at the
++ * ad9361-phy node because it provides sampl_clk - no device tree change needed.
++ */
++#if IS_ENABLED(CONFIG_AD9361)
++static struct ad9361_rf_phy *cf_axi_dds_find_ad9361(struct cf_axi_dds_state *st)
++{
++	struct device_node *np;
++	struct spi_device *spi;
++	struct ad9361_rf_phy *phy = NULL;
++
++	if (!st->indio_dev || !st->indio_dev->dev.parent)
++		return NULL;
++
++	np = of_parse_phandle(st->indio_dev->dev.parent->of_node, "clocks", 0);
++	if (!np)
++		return NULL;
++
++	if (of_device_is_compatible(np, "adi,ad9361")) {
++		spi = of_find_spi_device_by_node(np);
++		if (spi) {
++			/*
++			 * ad9361_spi_to_phy() dereferences the SPI drvdata
++			 * unconditionally, and that is NULL until the converter
++			 * has probed. Check before calling.
++			 */
++			if (spi_get_drvdata(spi))
++				phy = ad9361_spi_to_phy(spi);
++			put_device(&spi->dev);
++		}
++	}
++
++	of_node_put(np);
++
++	return phy;
++}
++
++void cf_axi_dds_tx_rf_mute(struct cf_axi_dds_state *st, bool mute)
++{
++	struct ad9361_rf_phy *phy;
++
++	if (mute == st->tx_muted)
++		return;
++
++	phy = cf_axi_dds_find_ad9361(st);
++	if (!phy)
++		return;
++
++	if (ad9361_tx_mute(phy, mute ? 1 : 0))
++		return;
++
++	st->tx_muted = mute;
++}
++#else
++void cf_axi_dds_tx_rf_mute(struct cf_axi_dds_state *st, bool mute) { }
++#endif
++EXPORT_SYMBOL_GPL(cf_axi_dds_tx_rf_mute);
++
+ static int cf_axi_dds_update_scan_mode(struct iio_dev *indio_dev,
+ 	const unsigned long *scan_mask)
+ {
+diff --git a/linux/drivers/iio/frequency/cf_axi_dds.h b/linux/drivers/iio/frequency/cf_axi_dds.h
+index fee820404..b5c8e6ef0 100755
+--- a/linux/drivers/iio/frequency/cf_axi_dds.h
++++ b/linux/drivers/iio/frequency/cf_axi_dds.h
+@@ -319,5 +319,6 @@ void dds_master_write(struct cf_axi_dds_state *st,
+ 		      unsigned int reg, unsigned int val);
+ 
+ bool cf_axi_dds_dma_fifo_en(struct cf_axi_dds_state *st);
++void cf_axi_dds_tx_rf_mute(struct cf_axi_dds_state *st, bool mute);
+ 
+ #endif /* ADI_AXI_DDS_H_ */
+diff --git a/linux/drivers/iio/frequency/cf_axi_dds_buffer_stream.c b/linux/drivers/iio/frequency/cf_axi_dds_buffer_stream.c
+index 67bd0111a..c2e6fc690 100755
+--- a/linux/drivers/iio/frequency/cf_axi_dds_buffer_stream.c
++++ b/linux/drivers/iio/frequency/cf_axi_dds_buffer_stream.c
+@@ -59,13 +59,25 @@ static int dds_buffer_state_set(struct iio_dev *indio_dev, bool state)
+ 			 (tmp_reg & CF_AXI_DDS_DMA_STAT_OVF) ? "underflow" : "");
+ #endif
+ 
+-	if (!state)
++	if (!state) {
++		/*
++		 * Attenuate before changing the data source, so nothing is
++		 * radiated during the handover. The IIO core calls
++		 * postdisable on buffer teardown even when the application
++		 * crashed or was killed, which is what makes this a real
++		 * guarantee rather than best effort.
++		 */
++		cf_axi_dds_tx_rf_mute(st, true);
+ 		return cf_axi_dds_datasel(st, -1, DATA_SEL_DDS);
++	}
+ 
+ 	dds_write(st, ADI_REG_VDMA_STATUS, ADI_VDMA_OVF | ADI_VDMA_UNF);
+ 
+ 	cf_axi_dds_start_sync(st, 1);
+ 
++	/* Restore the user's attenuation only now that the path is ready. */
++	cf_axi_dds_tx_rf_mute(st, false);
++
+ 	return 0;
+ }
+ 
+@@ -104,6 +116,21 @@ int cf_axi_dds_configure_buffer(struct iio_dev *indio_dev)
+ 	indio_dev->direction = IIO_DEVICE_DIRECTION_OUT;
+ 	indio_dev->setup_ops = &dds_buffer_setup_ops;
+ 
++	/*
++	 * Deliberately NOT muted here. Muting at probe looks like the safe
++	 * thing to do, but ad9361_tx_mute() caches the attenuation it finds and
++	 * at this point the phy has not yet applied adi,tx-attenuation-mdB - the
++	 * chip is still at its reset value, which is maximum attenuation. The
++	 * cache would capture 89.75 dB and every later unmute would faithfully
++	 * restore it, leaving the transmitter permanently silent. Measured: a
++	 * running TX stream sat at -89.75 dB instead of the requested -20 dB.
++	 *
++	 * So the cache is only ever populated by the postdisable below, from a
++	 * real attenuation the user chose, and tx_muted stays false until then
++	 * so the first preenable does not unmute something never muted. Quieting
++	 * the transmitter before the first stream is the boot script's job.
++	 */
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(cf_axi_dds_configure_buffer);
