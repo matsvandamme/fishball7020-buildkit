@@ -135,6 +135,11 @@ echo "=== [1/7] Building HDL: synth -> impl -> bitstream -> hardware platform ==
     source "$REPO_ROOT/tools/env-vivado.sh"
     cd "$SRC_DIR/hdl/projects/pluto"
     cp "$BUILD_ALL_DIR/build_hdl.tcl" .
+    # The WBFM channel coefficients live in scripts/ (next to the generator
+    # that produces them) and are copied in here rather than duplicated into
+    # patches/, so there is one source of truth. system_bd.tcl references
+    # this filename, so a rename has to happen in both places.
+    cp "$BUILD_ALL_DIR/coefile_wbfm_102100.coe" .
     vivado -mode batch -source build_hdl.tcl -journal build_hdl.jou -log build_hdl.log
     echo "    Timing summary:"; grep -A3 "Design Timing Summary" timing.rpt | tail -2 || true
 )
