@@ -400,17 +400,43 @@ USB connections that are easy to mix up:
 
 | Port | Enumerates as | What it's for |
 |---|---|---|
-| The board's own USB-OTG port | `0456:b673` (Analog Devices/ADALM-PLUTO), `/dev/ttyACM0` | Normal operation: network-over-USB (`192.168.2.1`), the board's own USB console |
-| The debug header (if populated) | FTDI `0403:6010` dual UART, `/dev/ttyUSB0` **and** `/dev/ttyUSB1` | JTAG-over-UART + a second UART console — only relevant if you're debugging at the FSBL/U-Boot level before the OTG port is even up |
+| The board's own USB-OTG port | `0456:b673` (Analog Devices/ADALM-PLUTO), typically `/dev/ttyACM*` | Normal operation: network-over-USB (`192.168.2.1`), the board's own USB console |
+| The debug header (if populated) | FTDI `0403:6010` dual UART, typically **two** `/dev/ttyUSB*` devices | JTAG-over-UART + a second UART console — only relevant if you're debugging at the FSBL/U-Boot level before the OTG port is even up |
 
 For everyday use, connect to the board's normal USB port:
 
+**First, find the port.** Don't assume `/dev/ttyACM0` — the number depends
+on what else is plugged into your machine. List the serial devices by their
+stable, self-describing names:
+
 ```bash
 # run on your HOST, from anywhere
-screen /dev/ttyACM0 115200
+ls -l /dev/serial/by-id/
 ```
-(Press Enter for a login prompt: `root`, no password. To exit `screen`
-cleanly: `Ctrl-A` then `k`, then `y`.)
+
+You're looking for the Analog Devices entry, e.g.:
+
+```
+usb-Analog_Devices_Inc._PlutoSDR__ADALM-PLUTO_-if03 -> ../../ttyACM0
+```
+
+(If you're on the FTDI debug header instead, it shows up as
+`usb-FTDI_...-if00` and `-if01` pointing at `ttyUSB*`.)
+
+**Then connect.** Use the `by-id` path directly — it's stable across
+reboots and replugs, unlike the `ttyACM*` number:
+
+```bash
+# run on your HOST, from anywhere
+screen /dev/serial/by-id/usb-Analog_Devices_Inc._PlutoSDR__ADALM-PLUTO_-if03 115200
+```
+
+(Tab-completion works on that path. If `/dev/serial/by-id/` doesn't exist
+on your system, fall back to `ls /dev/ttyACM* /dev/ttyUSB*` and use the
+device that appears when you plug the board in.)
+
+Press Enter for a login prompt: `root`, no password. To exit `screen`
+cleanly: `Ctrl-A` then `k`, then `y`.
 
 If you're on the debug header instead, try `/dev/ttyUSB1` first, then
 `/dev/ttyUSB0` if that one's silent or garbled — which channel carries
