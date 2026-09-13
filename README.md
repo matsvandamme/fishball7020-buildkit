@@ -59,6 +59,7 @@ required either way.
 - [7. Verify your build is actually running](#7-verify-your-build-is-actually-running)
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist)
+- [Vendor resources](#vendor-resources)
 - [License](#license)
 
 ## Before you start: back up your stock firmware
@@ -462,6 +463,20 @@ from public sources alone). See the
 [firmware README](firmware/README.md) for the exact
 patch list, including two genuine upstream bugs (hardcoded debug
 leftovers) found and fixed along the way.
+
+## Vendor resources
+
+Material published by the board's own distributor. Useful as primary
+reference, but note that none of it includes editable HDL sources — which
+is the gap this repository exists to fill.
+
+- [**PlutoSky R1 — OpenSourceSDRLab blog**](https://blog.opensourcesdrlab.com/archives/PlutoSky-R1)
+  — the vendor's own write-up of this board.
+- [**Vendor file archive**](https://workupload.com/archive/kc2v7ryVZZ)
+  — accompanying files distributed with the board.
+- [`OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR`](https://github.com/OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR)
+  — the vendor's GitHub repo, confirmed by checksum as the genuine source
+  of the prebuilt factory firmware binaries.
 
 ## License
 
