@@ -467,16 +467,23 @@ localhost:3121/xilinx_tcf/Digilent/000000000069A
 arm_dap_0 xc7z020_1
 ```
 
-**Stop the board in U-Boot before programming.** This matters: if Linux is
-already running, its drivers (`ad9361`, the DMAs) are bound to the *old* PL,
-and swapping the bitstream underneath them will break or hang the system.
-Halting at U-Boot means the FSBL has set up the PS but Linux hasn't claimed
-anything yet.
+**Keep BOTH cables connected the whole time.** The debug port powers the
+board (verified: JTAG reaches the Zynq with only that cable attached), and
+the USB 2.0 port carries the network/libiio data. Since the bitstream is
+volatile, unplugging the debug port to "move to" the USB 2.0 port would cut
+power and lose it. Connect both up front and unplug nothing.
+
+**Never program while Linux is running.** Its drivers (`ad9361`, the DMAs)
+are bound to the *old* PL; swapping the bitstream underneath them will break
+or hang the system and needs a power-cycle to recover.
+
+### C1. Quick method — Hardware Manager, halted at U-Boot
 
 1. Open the debug UART console, power-cycle, press a key within 3 s to stop
-   at the `Zynq>` prompt.
-2. Program the device — in the GUI: **Open Hardware Manager → Auto Connect
-   → right-click `xc7z020_1` → Program Device**. Or scripted:
+   at the `Zynq>` prompt. (The FSBL has now configured the PS and enabled
+   the PS↔PL level shifters, but Linux hasn't claimed anything.)
+2. Program — GUI: **Open Hardware Manager → Auto Connect → right-click
+   `xc7z020_1` → Program Device**. Or scripted:
 
    ```tcl
    open_hw_manager
@@ -491,15 +498,52 @@ anything yet.
 
 3. Back at `Zynq>`, type `boot`. Linux comes up against your new PL.
 
-**How to know it worked:** programming prints the FPGA's DONE pin going
-high —
+**Success indicator** — programming prints the FPGA's DONE pin going high:
 
 ```
 INFO: [Labtools 27-3164] End of startup status: HIGH
 ```
 
-That line is the success indicator. If it says `LOW`, the bitstream didn't
-take (wrong file, or the device was reset mid-programming).
+`LOW` means the bitstream didn't take (wrong file, or the device was reset
+mid-programming).
+
+**Caveat.** This configures the PL fabric correctly, but on Zynq the PS↔PL
+level shifters and PL resets are managed by *software* (`ps7_post_config`),
+not by the act of programming. Re-loading the PL underneath a PS that was
+set up for the previous bitstream can leave the AXI interfaces in an
+undefined state. In practice this is usually fine for iterating on logic
+that doesn't change the AXI topology — but if the design misbehaves in ways
+the bitstream alone doesn't explain, use C2.
+
+### C2. Robust method — full JTAG bootstrap (ADI's own flow)
+
+Upstream ships `scripts/run-xsdb.tcl` and a `jtag-bootstrap` make target
+for exactly this. It brings the whole board up from JTAG, so the PS is
+initialised *for the bitstream you are loading*, in the correct order:
+`ps7_init` → program PL → `ps7_post_config` → load U-Boot.
+
+```tcl
+# xsdb run-jtag.tcl     (run from: firmware/src/hdl/projects/pluto)
+connect
+target 2
+rst
+source ps7_init.tcl
+ps7_init
+fpga -f pluto.runs/impl_1/system_top.bit
+ps7_post_config
+dow ../../../u-boot-xlnx/u-boot
+con
+```
+
+Ordering is the part that matters: `ps7_init` configures DDR/clocks/MIO,
+the bitstream goes in next, and **`ps7_post_config` must come after it** —
+that's the step that enables the PS↔PL level shifters and releases the PL
+resets. ADI's shipped script has the `fpga` line commented out because
+their use case was flashing U-Boot without a new bitstream; uncommenting it
+in this position is the standard Zynq sequence.
+
+Everything it needs is produced by the normal build: `ps7_init.tcl` (also
+inside `system_top.xsa`), `system_top.bit`, and the `u-boot` ELF.
 
 When the design is working, rebuild properly (`build_all.sh`) and flash via
 Option A so it persists.
