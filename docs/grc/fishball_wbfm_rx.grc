@@ -1,0 +1,406 @@
+options:
+  parameters:
+    author: Matthieu
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: WBFM receiver for the Fishball7020 SDR, using the FPGA channel filter
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: fishball_wbfm_rx
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: 'On'
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: Fishball7020 WBFM Receiver
+    window_size: (1400,900)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 8]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: 'Hardware rate. The FPGA FIR scales with this: passband = 0.048 * samp_rate.
+      At 2.304 MSPS that is +/-110 kHz, one WBFM channel.'
+    value: '2304000'
+  states:
+    coordinate: [16, 100]
+    rotation: 0
+    state: enabled
+- name: decim
+  id: variable
+  parameters:
+    comment: 2304000 / 8 = 288000
+    value: '8'
+  states:
+    coordinate: [120, 100]
+    rotation: 0
+    state: enabled
+- name: quad_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: int(samp_rate/decim)
+  states:
+    coordinate: [192, 100]
+    rotation: 0
+    state: enabled
+- name: audio_rate
+  id: variable
+  parameters:
+    comment: 288000 / 6 = 48000 exactly
+    value: '48000'
+  states:
+    coordinate: [296, 100]
+    rotation: 0
+    state: enabled
+- name: audio_decim
+  id: variable
+  parameters:
+    comment: ''
+    value: int(quad_rate/audio_rate)
+  states:
+    coordinate: [400, 100]
+    rotation: 0
+    state: enabled
+- name: freq
+  id: variable_qtgui_range
+  parameters:
+    comment: FM broadcast band
+    gui_hint: 0,0,1,1
+    label: Frequency (Hz)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: 87.5e6
+    step: 100e3
+    stop: 108e6
+    value: 100.1e6
+    widget: counter_slider
+  states:
+    coordinate: [16, 188]
+    rotation: 0
+    state: enabled
+- name: rf_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: Used only when gain mode is manual
+    gui_hint: 0,1,1,1
+    label: RF Gain (dB)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: '73'
+    value: '40'
+    widget: counter_slider
+  states:
+    coordinate: [192, 188]
+    rotation: 0
+    state: enabled
+- name: volume
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: 1,0,1,1
+    label: Volume
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '0.01'
+    stop: '2'
+    value: '0.3'
+    widget: counter_slider
+  states:
+    coordinate: [368, 188]
+    rotation: 0
+    state: enabled
+- name: squelch_db
+  id: variable_qtgui_range
+  parameters:
+    comment: Set to -100 to disable
+    gui_hint: 1,1,1,1
+    label: Squelch (dB)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '-100'
+    step: '1'
+    stop: '0'
+    value: '-100'
+    widget: counter_slider
+  states:
+    coordinate: [544, 188]
+    rotation: 0
+    state: enabled
+
+- name: iio_pluto_source_0
+  id: iio_pluto_source
+  parameters:
+    affinity: ''
+    alias: ''
+    bandwidth: '18000000'
+    bbdc: 'True'
+    buffer_size: '32768'
+    comment: 'RF bandwidth is the AD9361 ANALOG filter - leave it wide. The sharp
+      channel filtering is done by the FPGA FIR.'
+    filter: ''
+    filter_source: '''Auto'''
+    fpass: '0'
+    frequency: int(freq)
+    fstop: '0'
+    gain1: '''slow_attack'''
+    len_tag_key: packet_len
+    manual_gain1: rf_gain
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    quadrature: 'True'
+    rfdc: 'True'
+    samplerate: samp_rate
+    type: fc32
+    uri: ip:192.168.2.1
+  states:
+    coordinate: [16, 316]
+    rotation: 0
+    state: enabled
+
+- name: qtgui_freq_sink_rf
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    autoscale: 'False'
+    average: '0.2'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    comment: 'This view shows the FPGA filter directly: the shoulders at +/-110 kHz
+      are the hardware FIR, not anything GNU Radio is doing.'
+    ctrlpanel: 'False'
+    fc: freq
+    fftsize: '4096'
+    freqhalf: 'True'
+    grid: 'True'
+    gui_hint: 2,0,3,2
+    label1: RF
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"1 - Radio output (FPGA filter visible here)"'
+    nconnections: '1'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '-20'
+    ymin: '-140'
+  states:
+    coordinate: [432, 236]
+    rotation: 0
+    state: enabled
+
+- name: low_pass_filter_0
+  id: low_pass_filter
+  parameters:
+    affinity: ''
+    alias: ''
+    beta: '6.76'
+    comment: 'Anti-alias guard for the decimation only. The FPGA already removed
+      everything past ~110 kHz, so this can be gentle.'
+    cutoff_freq: '100000'
+    decim: decim
+    gain: '1'
+    interp: '1'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    type: fir_filter_ccf
+    width: '30000'
+    win: window.WIN_HAMMING
+  states:
+    coordinate: [416, 404]
+    rotation: 0
+    state: enabled
+
+- name: analog_pwr_squelch_0
+  id: analog_pwr_squelch_xx
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha: '1.0'
+    comment: ''
+    gate: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    ramp: '0'
+    threshold: squelch_db
+    type: complex
+  states:
+    coordinate: [680, 420]
+    rotation: 0
+    state: enabled
+
+- name: qtgui_freq_sink_bb
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    autoscale: 'False'
+    average: '0.2'
+    axislabels: 'True'
+    bw: quad_rate
+    color1: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: '2048'
+    freqhalf: 'True'
+    grid: 'True'
+    gui_hint: 2,2,3,2
+    label1: Baseband
+    legend: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"2 - Demod input (288 kHz)"'
+    nconnections: '1'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.10'
+    width1: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '-20'
+    ymin: '-140'
+  states:
+    coordinate: [680, 292]
+    rotation: 0
+    state: enabled
+
+- name: analog_wfm_rcv_0
+  id: analog_wfm_rcv
+  parameters:
+    affinity: ''
+    alias: ''
+    audio_decimation: audio_decim
+    comment: 288000 / 6 = 48000
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    quad_rate: quad_rate
+  states:
+    coordinate: [928, 420]
+    rotation: 0
+    state: enabled
+
+- name: blocks_multiply_const_volume
+  id: blocks_multiply_const_vxx
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    const: volume
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    type: float
+    vlen: '1'
+  states:
+    coordinate: [1120, 436]
+    rotation: 0
+    state: enabled
+
+- name: audio_sink_0
+  id: audio_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: 'Leave device_name blank for the default. Try "pulse" if silent.'
+    device_name: ''
+    num_inputs: '1'
+    ok_to_block: 'True'
+    samp_rate: audio_rate
+  states:
+    coordinate: [1320, 436]
+    rotation: 0
+    state: enabled
+
+- name: qtgui_time_sink_audio
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: '"dark red"'
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'True'
+    grid: 'True'
+    gui_hint: 5,0,2,4
+    label1: Audio
+    legend: 'False'
+    name: '"3 - Demodulated audio"'
+    nconnections: '1'
+    size: '1024'
+    srate: audio_rate
+    stemplot: 'False'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: float
+    update_time: '0.10'
+    width1: '1'
+    ylabel: Amplitude
+    ymax: '1.5'
+    ymin: '-1.5'
+    yunit: '""'
+  states:
+    coordinate: [1120, 292]
+    rotation: 0
+    state: enabled
+
+connections:
+- [iio_pluto_source_0, '0', qtgui_freq_sink_rf, '0']
+- [iio_pluto_source_0, '0', low_pass_filter_0, '0']
+- [low_pass_filter_0, '0', analog_pwr_squelch_0, '0']
+- [low_pass_filter_0, '0', qtgui_freq_sink_bb, '0']
+- [analog_pwr_squelch_0, '0', analog_wfm_rcv_0, '0']
+- [analog_wfm_rcv_0, '0', blocks_multiply_const_volume, '0']
+- [blocks_multiply_const_volume, '0', audio_sink_0, '0']
+- [blocks_multiply_const_volume, '0', qtgui_time_sink_audio, '0']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0
