@@ -86,6 +86,10 @@ BOOT.bin  devicetree.dtb  uEnv.txt  uImage  uramdisk.image.gz
 Copy all five onto a FAT32 SD card, insert, power on. Then jump to
 [step 4](#4-add-your-own-hdl) to start changing the FPGA logic.
 
+New to FPGAs or embedded Linux? **[How it works](docs/how-it-works.md)**
+explains what those five files are and what happens between power-on and a
+login prompt — no prior knowledge assumed.
+
 > **Back up first.** Before flashing anything, copy the five files already
 > on your board's SD card somewhere safe — that's your one-click way back if
 > a build misbehaves. No backup? See
@@ -103,6 +107,7 @@ Copy all five onto a FAT32 SD card, insert, power on. Then jump to
   [6. Flash](#6-flash-the-board) ·
   [7. Verify](#7-verify-your-build-is-actually-running)
 - [Repository layout](#repository-layout)
+- [How it works](docs/how-it-works.md) — the boot chain explained from scratch
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist) ·
   [Vendor resources](#vendor-resources) · [License](#license)
