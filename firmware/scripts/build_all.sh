@@ -28,6 +28,27 @@ if [ ! -d "$SRC_DIR" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Options
+# ---------------------------------------------------------------------------
+# Stages 3-5 (u-boot, kernel, root filesystem) produce byte-identical output
+# when only the HDL has changed, and together they are most of the wall time.
+# --hdl-only reuses what is already in src/ and rebuilds just the parts that
+# actually depend on the bitstream: HDL -> FSBL -> uEnv.txt -> BOOT.bin.
+HDL_ONLY=0
+for arg in "$@"; do
+    case "$arg" in
+        --hdl-only) HDL_ONLY=1 ;;
+        -h|--help)
+            echo "Usage: $(basename "$0") [--hdl-only]"
+            echo "  --hdl-only   rebuild HDL, FSBL and packaging only, reusing the"
+            echo "               existing kernel, u-boot and root filesystem."
+            exit 0 ;;
+        *) echo "ERROR: unknown option '$arg' (try --help)" >&2; exit 1 ;;
+    esac
+done
+[ "$HDL_ONLY" -eq 1 ] && echo "*** --hdl-only: skipping u-boot, kernel and rootfs stages ***"
+
+# ---------------------------------------------------------------------------
 # Preflight. This build takes the better part of an hour and the stages that
 # need a given tool are spread across all of it - the FSBL stage, for example,
 # is ~40 minutes in. Discovering a missing package there is miserable, so
@@ -145,65 +166,83 @@ echo "=== [2/7] Building FSBL ==="
 FSBL_ELF="$SRC_DIR/hdl/fsbl/fsbl/Debug/fsbl.elf"
 [ -f "$FSBL_ELF" ] || { echo "ERROR: FSBL build failed"; exit 1; }
 
-echo "=== [3/7] Building u-boot ==="
-PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/u-boot-xlnx" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE zynq_pluto_defconfig
-PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/u-boot-xlnx" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE UBOOTVERSION="PlutoSDR"
-
-echo "=== [4/7] Building kernel: uImage + fishball device tree ==="
-PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/linux" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE zynq_pluto_defconfig
-PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/linux" -j "$(nproc)" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE uImage UIMAGE_LOADADDR=0x8000
-PATH="$TOOLCHAIN_PATH" DTC_FLAGS=-@ make -C "$SRC_DIR/linux" -j "$(nproc)" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE zynq-pluto-sdr-fishball.dtb
-
-echo "=== [5/7] Building rootfs (auto-retries on git-archive hash drift) ==="
-# Upstream's top-level Makefile (which this script otherwise bypasses, to
-# keep Vivado's PATH pollution away from the u-boot/kernel/buildroot steps -
-# see the big comment above) does three things before "make -C buildroot
-# ... all" that our own direct buildroot invocation was skipping: write
-# buildroot/board/pluto/VERSIONS, run "make -C buildroot legal-info", and
-# turn that into buildroot/board/pluto/msd/LICENSE.html via
-# scripts/legal_info_html.sh. Without msd/LICENSE.html, the board's own
-# post-build.sh fails while generating the (immediately-discarded, and not
-# one of our 5 SD-card output files) boot.vfat MSD image, aborting the
-# whole buildroot run before rootfs.cpio.gz is produced.
-echo device-fw "$(cd "$SRC_DIR" && git describe --abbrev=4 --dirty --always --tags)" > "$SRC_DIR/buildroot/board/pluto/VERSIONS"
-for d in hdl buildroot linux u-boot-xlnx; do
-    echo "$d $(cd "$SRC_DIR/$d" && git describe --abbrev=4 --dirty --always --tags)" >> "$SRC_DIR/buildroot/board/pluto/VERSIONS"
-done
-buildroot_defconfig
-# legal-info downloads sources, so it can hit the same git-archive hash drift
-# as the main build - run it through the same auto-repair wrapper rather than
-# letting it kill the build before the wrapper is ever reached.
-PATH="$CLEAN_PATH" "$BUILD_ALL_DIR/fix_and_retry_buildroot.sh" "$SRC_DIR" legal-info
-mkdir -p "$SRC_DIR/build"
-(cd "$SRC_DIR" && PATH="$CLEAN_PATH" scripts/legal_info_html.sh "PlutoSDR" "$SRC_DIR/buildroot/board/pluto/VERSIONS")
-cp "$SRC_DIR/build/LICENSE.html" "$SRC_DIR/buildroot/board/pluto/msd/LICENSE.html"
-
-# Buildroot's bundled host-m4 doesn't build under GCC >= 14's stricter C
-# defaults, so on a very new distro we have to point HOSTCC at an older
-# compiler. Don't hardcode that: Ubuntu 22.04 (the supported host) ships
-# GCC 11, which builds it fine and does not package gcc-13 at all - forcing
-# HOSTCC=gcc-13 there fails with "Unable to locate package gcc-13".
-HOST_CC_ARGS=()
-gcc_major="$(gcc -dumpversion 2>/dev/null | cut -d. -f1)"
-if [ "${gcc_major:-0}" -ge 14 ]; then
-    if command -v gcc-13 >/dev/null 2>&1 && command -v g++-13 >/dev/null 2>&1; then
-        echo "    default gcc is $gcc_major (too new for host-m4); using gcc-13 for host tools"
-        HOST_CC_ARGS=(HOSTCC=gcc-13 HOSTCXX=g++-13)
-    else
-        echo "ERROR: your default gcc is $gcc_major, but Buildroot's host-m4 needs GCC <= 13." >&2
-        echo "       Install gcc-13 and g++-13, or build on a host with an older default gcc." >&2
-        exit 1
-    fi
+if [ "$HDL_ONLY" -eq 1 ]; then
+    echo "=== [skipped] u-boot (--hdl-only) ==="
+    [ -f "$SRC_DIR/u-boot-xlnx/u-boot" ] || { echo "ERROR: --hdl-only needs a previous full build; $SRC_DIR/u-boot-xlnx/u-boot is missing." >&2; exit 1; }
 else
-    echo "    default gcc is ${gcc_major:-unknown}; using it for host tools"
+    echo "=== [3/7] Building u-boot ==="
+    PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/u-boot-xlnx" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE zynq_pluto_defconfig
+    PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/u-boot-xlnx" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE UBOOTVERSION="PlutoSDR"
+
 fi
 
-PATH="$CLEAN_PATH" "$BUILD_ALL_DIR/fix_and_retry_buildroot.sh" "$SRC_DIR" \
-    "${HOST_CC_ARGS[@]}" \
-    BUSYBOX_CONFIG_FILE="$SRC_DIR/buildroot/board/pluto/busybox-1.25.0.config" all
-if [ ! -f "$SRC_DIR/buildroot/output/images/rootfs.cpio.gz" ]; then
-    echo "ERROR: buildroot rootfs build failed - see /tmp/buildroot_autoretry_*.log" >&2
-    exit 1
+if [ "$HDL_ONLY" -eq 1 ]; then
+    echo "=== [skipped] kernel (--hdl-only) ==="
+    [ -f "$SRC_DIR/linux/arch/arm/boot/uImage" ] || { echo "ERROR: --hdl-only needs a previous full build; $SRC_DIR/linux/arch/arm/boot/uImage is missing." >&2; exit 1; }
+else
+    echo "=== [4/7] Building kernel: uImage + fishball device tree ==="
+    PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/linux" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE zynq_pluto_defconfig
+    PATH="$TOOLCHAIN_PATH" make -C "$SRC_DIR/linux" -j "$(nproc)" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE uImage UIMAGE_LOADADDR=0x8000
+    PATH="$TOOLCHAIN_PATH" DTC_FLAGS=-@ make -C "$SRC_DIR/linux" -j "$(nproc)" ARCH=arm CROSS_COMPILE=$CROSS_COMPILE zynq-pluto-sdr-fishball.dtb
+
+fi
+
+if [ "$HDL_ONLY" -eq 1 ]; then
+    echo "=== [skipped] root filesystem (--hdl-only) ==="
+    [ -f "$SRC_DIR/buildroot/output/images/rootfs.cpio.gz" ] || { echo "ERROR: --hdl-only needs a previous full build; $SRC_DIR/buildroot/output/images/rootfs.cpio.gz is missing." >&2; exit 1; }
+else
+    echo "=== [5/7] Building rootfs (auto-retries on git-archive hash drift) ==="
+    # Upstream's top-level Makefile (which this script otherwise bypasses, to
+    # keep Vivado's PATH pollution away from the u-boot/kernel/buildroot steps -
+    # see the big comment above) does three things before "make -C buildroot
+    # ... all" that our own direct buildroot invocation was skipping: write
+    # buildroot/board/pluto/VERSIONS, run "make -C buildroot legal-info", and
+    # turn that into buildroot/board/pluto/msd/LICENSE.html via
+    # scripts/legal_info_html.sh. Without msd/LICENSE.html, the board's own
+    # post-build.sh fails while generating the (immediately-discarded, and not
+    # one of our 5 SD-card output files) boot.vfat MSD image, aborting the
+    # whole buildroot run before rootfs.cpio.gz is produced.
+    echo device-fw "$(cd "$SRC_DIR" && git describe --abbrev=4 --dirty --always --tags)" > "$SRC_DIR/buildroot/board/pluto/VERSIONS"
+    for d in hdl buildroot linux u-boot-xlnx; do
+        echo "$d $(cd "$SRC_DIR/$d" && git describe --abbrev=4 --dirty --always --tags)" >> "$SRC_DIR/buildroot/board/pluto/VERSIONS"
+    done
+    buildroot_defconfig
+    # legal-info downloads sources, so it can hit the same git-archive hash drift
+    # as the main build - run it through the same auto-repair wrapper rather than
+    # letting it kill the build before the wrapper is ever reached.
+    PATH="$CLEAN_PATH" "$BUILD_ALL_DIR/fix_and_retry_buildroot.sh" "$SRC_DIR" legal-info
+    mkdir -p "$SRC_DIR/build"
+    (cd "$SRC_DIR" && PATH="$CLEAN_PATH" scripts/legal_info_html.sh "PlutoSDR" "$SRC_DIR/buildroot/board/pluto/VERSIONS")
+    cp "$SRC_DIR/build/LICENSE.html" "$SRC_DIR/buildroot/board/pluto/msd/LICENSE.html"
+
+    # Buildroot's bundled host-m4 doesn't build under GCC >= 14's stricter C
+    # defaults, so on a very new distro we have to point HOSTCC at an older
+    # compiler. Don't hardcode that: Ubuntu 22.04 (the supported host) ships
+    # GCC 11, which builds it fine and does not package gcc-13 at all - forcing
+    # HOSTCC=gcc-13 there fails with "Unable to locate package gcc-13".
+    HOST_CC_ARGS=()
+    gcc_major="$(gcc -dumpversion 2>/dev/null | cut -d. -f1)"
+    if [ "${gcc_major:-0}" -ge 14 ]; then
+        if command -v gcc-13 >/dev/null 2>&1 && command -v g++-13 >/dev/null 2>&1; then
+            echo "    default gcc is $gcc_major (too new for host-m4); using gcc-13 for host tools"
+            HOST_CC_ARGS=(HOSTCC=gcc-13 HOSTCXX=g++-13)
+        else
+            echo "ERROR: your default gcc is $gcc_major, but Buildroot's host-m4 needs GCC <= 13." >&2
+            echo "       Install gcc-13 and g++-13, or build on a host with an older default gcc." >&2
+            exit 1
+        fi
+    else
+        echo "    default gcc is ${gcc_major:-unknown}; using it for host tools"
+    fi
+
+    PATH="$CLEAN_PATH" "$BUILD_ALL_DIR/fix_and_retry_buildroot.sh" "$SRC_DIR" \
+        "${HOST_CC_ARGS[@]}" \
+        BUSYBOX_CONFIG_FILE="$SRC_DIR/buildroot/board/pluto/busybox-1.25.0.config" all
+    if [ ! -f "$SRC_DIR/buildroot/output/images/rootfs.cpio.gz" ]; then
+        echo "ERROR: buildroot rootfs build failed - see /tmp/buildroot_autoretry_*.log" >&2
+        exit 1
+    fi
+
 fi
 
 echo "=== [6/7] Generating uEnv.txt from the freshly-built u-boot ==="

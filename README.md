@@ -390,8 +390,22 @@ long-term (or share it) port it into `system_bd.tcl` and add it to
 ./scripts/build_all.sh
 ```
 
-This single script runs every stage, in order, and leaves the final files
-in `output/`:
+**Iterating on HDL?** Use `--hdl-only`. Stages 3–5 (U-Boot, kernel, root
+filesystem) produce byte-identical output when only the FPGA design has
+changed, and together they are most of the wall time. Skipping them cuts a
+rebuild from roughly 70 minutes to about 20:
+
+```bash
+# run from: firmware/
+./scripts/build_all.sh --hdl-only
+```
+
+It reuses the existing kernel/U-Boot/rootfs from `src/`, and refuses to run
+if a previous full build hasn't produced them. Use a plain `build_all.sh`
+after changing anything outside the HDL.
+
+A full run executes every stage, in order, and leaves the final files in
+`output/`:
 
 | Stage | What it does |
 |---|---|
