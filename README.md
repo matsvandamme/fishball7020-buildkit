@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/board-Zynq%20XC7Z020%20%2B%20AD9361-blue" alt="Board: Zynq XC7Z020 + AD9361">
   <img src="https://img.shields.io/badge/toolchain-Vivado%2FVitis%202022.2-orange" alt="Toolchain: Vivado/Vitis 2022.2">
   <img src="https://img.shields.io/badge/host%20OS-Ubuntu%2022.04%20LTS-e95420" alt="Host OS: Ubuntu 22.04 LTS">
-  <img src="https://img.shields.io/badge/license-MIT%20%2B%20GPL%20(mixed)-lightgrey" alt="License: MIT + GPL (mixed)">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--2.0-lightgrey" alt="License: GPL-2.0"></a>
   <a href="../../actions/workflows/verify-patches.yml"><img src="https://github.com/matsvandamme/fishball7020-fpga-devkit/actions/workflows/verify-patches.yml/badge.svg" alt="Verify patches CI status"></a>
 </p>
 
@@ -83,10 +83,9 @@ $ ls output/
 BOOT.bin  devicetree.dtb  uEnv.txt  uImage  uramdisk.image.gz
 ```
 
-Copy all five onto a FAT32 SD card and insert it. **Set the `BOOT` DIP
-switch to SD mode (`0 0`) with the board powered off** — it ships in QSPI
-mode and will otherwise ignore the card entirely. See
-[Boot modes](#boot-modes-boot-dip-switch). Then power on, and jump to
+Copy all five onto a FAT32 SD card, insert it, and power on. If nothing
+happens, check the `BOOT` DIP switch is in SD mode (`0 0`) — see
+[Boot modes](#boot-modes-boot-dip-switch). Then jump to
 [step 4](#4-add-your-own-hdl) to start changing the FPGA logic.
 
 New to FPGAs or embedded Linux? **[How it works](docs/how-it-works.md)**
@@ -117,18 +116,27 @@ login prompt — no prior knowledge assumed.
 
 ## Boot modes (BOOT DIP switch)
 
-**Read this before your first flash.** The board picks where to boot from
-using a two-position DIP switch marked **`BOOT`**, next to the `RST` button
-between the `USB2.0` and `DEBUG` ports. **It ships set to QSPI flash, not SD
-card** — so copying the five files onto an SD card and powering on does
-nothing until you move the switch.
+The board picks where to boot from using a two-position DIP switch marked
+**`BOOT`**, next to the `RST` button between the `USB2.0` and `DEBUG` ports.
+Boards ship set to **SD card (`0 0`)**, which is what the devkit needs — so
+normally there is nothing to change. If a freshly flashed card appears to do
+nothing, check this switch first.
 
-<p align="center"><img src="docs/img/boot-modes.svg" alt="BOOT DIP switch positions: SD card = 0 0 (both sliders down), QSPI flash = 1 0, JTAG = 1 1 (both sliders up)" width="660"></p>
+<table>
+<tr>
+<td align="center"><img src="docs/img/boot-sd-00.jpg" alt="BOOT switch set to 0 0 for SD card boot" width="250"><br><b>SD card — <code>0 0</code></b><br><sub>factory default, used by the devkit</sub></td>
+<td align="center"><img src="docs/img/boot-qspi-10.jpg" alt="BOOT switch set to 1 0 for QSPI flash boot" width="250"><br><b>QSPI flash — <code>1 0</code></b><br><sub>boots from the onboard flash</sub></td>
+<td align="center"><img src="docs/img/boot-jtag-11.jpg" alt="BOOT switch set to 1 1 for JTAG mode" width="250"><br><b>JTAG — <code>1 1</code></b><br><sub>debugging and flashing</sub></td>
+</tr>
+</table>
+
+<sub>Switch photographs from the distributor's
+<a href="https://blog.opensourcesdrlab.com/archives/PlutoSky-R1">PlutoSky R1 write-up</a>.</sub>
 
 | Mode | SW1 | SW2 | What it does |
 |---|---|---|---|
-| **SD card** | `0` (GND) | `0` (GND) | Boots `BOOT.bin` from the microSD card — **use this for the devkit** |
-| **QSPI flash** | `1` (VCC3V3) | `0` (GND) | Boots from the onboard flash chip — **factory default** |
+| **SD card** | `0` (GND) | `0` (GND) | Boots `BOOT.bin` from the microSD card — **factory default, and what the devkit needs** |
+| **QSPI flash** | `1` (VCC3V3) | `0` (GND) | Boots from the onboard 16 MiB flash chip instead |
 | **JTAG** | `1` (VCC3V3) | `1` (VCC3V3) | For debugging and flashing over JTAG |
 
 `1` means the slider is pushed toward the **`ON`** marking on the switch
@@ -138,14 +146,15 @@ body; `0` means the opposite side.
 > only at power-on, so flipping it on a running board does nothing until the
 > next power cycle — and hot-switching signal pins is a bad habit regardless.
 
-Two useful consequences:
+Notes:
 
-- **Your stock firmware stays safe in QSPI.** SD-card boot doesn't touch the
-  flash, so the factory image remains intact. If a build misbehaves, set the
-  switch back to `1 0` and the board boots exactly as it shipped — a hardware
-  undo that needs no files at all.
+- **SD-card boot never writes to the QSPI flash**, so whatever is on that
+  chip is unaffected by anything the devkit does.
 - **JTAG mode is for the [Option C](#option-c--jtag-temporary-but-the-fastest-hdl-loop)
   workflow**, not for normal running.
+- The distributor's write-up lists QSPI as the default; boards observed in
+  practice ship in SD mode. Either way the switch is the thing to check, not
+  the documentation.
 
 ### LEDs
 
@@ -409,10 +418,10 @@ Eject it, insert it into the board, and power-cycle. This is the only
 option that can update **everything**, including the FPGA bitstream, and
 it's the one to use whenever you've changed HDL.
 
-Make sure the `BOOT` switch is in **SD mode (`0 0`)** — see
-[Boot modes](#boot-modes-boot-dip-switch). A board still in its factory QSPI
-setting will boot the stock firmware and ignore your card, which looks
-exactly like a failed build.
+If the board comes up with the old firmware, or doesn't come up at all,
+check the `BOOT` switch is in SD mode (`0 0`) — see
+[Boot modes](#boot-modes-boot-dip-switch). A board in QSPI mode ignores the
+card entirely, which looks exactly like a failed build.
 
 ### Option B — DFU over USB (no disassembly)
 

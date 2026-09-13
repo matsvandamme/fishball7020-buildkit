@@ -20,6 +20,11 @@ tools/legacy-libs/
 docs/img/board.jpg
     Product photograph of the board, from the distributor's own listing.
 
+docs/img/boot-sd-00.jpg, boot-qspi-10.jpg, boot-jtag-11.jpg
+    Photographs of the BOOT DIP switch positions, from the distributor's
+    PlutoSky R1 write-up:
+    https://blog.opensourcesdrlab.com/archives/PlutoSky-R1
+
 firmware/src/  (not committed; fetched by firmware/scripts/setup.sh)
     Linux (GPL-2.0), U-Boot (GPL-2.0+) and Buildroot (mostly MIT/BSD, with
     individual packages under their own licences), from
