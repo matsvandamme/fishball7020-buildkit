@@ -505,8 +505,22 @@ screen /dev/serial/by-id/usb-Digilent_Digilent_Adept_USB_Device_<serial>-if01-po
 on your system, fall back to `ls /dev/ttyACM* /dev/ttyUSB*` and use the
 device that appears when you plug the board in.)
 
-Press Enter for a login prompt: `root`, no password. To exit `screen`
-cleanly: `Ctrl-A` then `k`, then `y`.
+Press Enter for a login prompt. The credentials are **`root` / `analog`**
+(set by `BR2_TARGET_GENERIC_ROOT_PASSWD` in the Buildroot defconfig; change
+it on the board with `device_passwd`). To exit `screen` cleanly: `Ctrl-A`
+then `k`, then `y`.
+
+**SSH works too**, which is often more convenient than a serial console —
+the firmware runs dropbear, and the board is reachable over the USB network
+(or Ethernet). Same credentials:
+
+```bash
+# run on your HOST, from anywhere
+ssh root@192.168.2.1        # password: analog
+```
+
+Note SSH needs the **USB 2.0 port** (or Ethernet) for networking — the
+debug port carries only JTAG and UART, no network.
 
 If you're on the debug header instead, try `/dev/ttyUSB1` first, then
 `/dev/ttyUSB0` if that one's silent or garbled — which channel carries
