@@ -110,6 +110,7 @@ login prompt — no prior knowledge assumed.
   [7. Verify](#7-verify-your-build-is-actually-running)
 - [Repository layout](#repository-layout)
 - [How it works](docs/how-it-works.md) — the boot chain explained from scratch
+- [Worked example: an FM channelizer in the FPGA](docs/wbfm-channelizer.md)
 - [Controlling the USER LED](docs/user-led.md) — for custom projects
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist) ·
@@ -357,6 +358,15 @@ filtering entirely:
 - You can edit the block design graphically (drag in your own IP, wire it
   up, right-click → **Create HDL Wrapper**), or edit `system_bd.tcl`
   directly.
+
+> **Want to see all of this done for real?**
+> **[Isolating one FM channel in the FPGA](docs/wbfm-channelizer.md)** is a
+> complete worked example: a custom Verilog block inserted into the channel-0
+> RX path, new FIR coefficients designed and verified from a script, the
+> patch that makes it survive a clean `setup.sh`, and a GNU Radio flowgraph
+> with no software channel filter left in it. It also explains why the
+> obvious approach — "just lowpass the channel" — cannot work, which is worth
+> reading before you design any filter for this board.
 
 ### Rebuilding after a GUI block-design edit
 
@@ -748,7 +758,8 @@ fishball7020-sdr-firmware/
     │                                   byte-for-byte comparison results against real hardware
     ├── patches/
     │   ├── 0001-fishball7020-fixes.patch        6 real fixes (see firmware README for details)
-    │   └── 0002-add-fishball-devicetree.patch   the board's actual device tree, as source
+    │   ├── 0002-add-fishball-devicetree.patch   the board's actual device tree, as source
+    │   └── 0003-wbfm-channelizer.patch          the FM channelizer worked example (docs/wbfm-channelizer.md)
     ├── scripts/
     │   ├── setup.sh                    (run once) clones upstream source into src/, applies patches/
     │   ├── build_all.sh                (run every time) full build → output/
@@ -756,7 +767,10 @@ fishball7020-sdr-firmware/
     │   ├── gen_fsbl_create.tcl         Vitis/xsct: scaffold the FSBL app from the hardware platform
     │   ├── gen_fsbl_build.tcl          Vitis/xsct: compile the FSBL app
     │   ├── fix_and_retry_buildroot.sh  auto-repairs a known Buildroot git-archive hash-drift issue
-    │   └── boot.bif                    bootgen recipe: FSBL + bitstream + U-Boot → BOOT.bin
+    │   ├── boot.bif                    bootgen recipe: FSBL + bitstream + U-Boot → BOOT.bin
+    │   ├── gen_fir_coe.py              designs + verifies FIR coefficients (stdlib only, no MATLAB)
+    │   ├── gen_fir_coe.m               the MATLAB equivalent (equiripple; needs the SP Toolbox)
+    │   └── coefile_*.coe               generated coefficients; build_all.sh copies these into src/
     ├── src/                            ← created by setup.sh, NOT committed to git (see .gitignore)
     │   │                                 the actual upstream source tree you'll edit HDL/kernel/etc in:
     │   ├── hdl/projects/pluto/          ← the Vivado project lives here (pluto.xpr, once built)
