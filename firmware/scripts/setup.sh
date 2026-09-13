@@ -33,7 +33,12 @@ if [ -d "$SRC_DIR/.git" ]; then
     # working tree is half-populated and the index is full of staged deletions.
     # Patching that produces a confusing cascade of failures a long way from the
     # real cause, so detect it here and say plainly what to do.
-    if (cd "$SRC_DIR" && git status --porcelain | grep -q '^D '); then
+    # NB: grep -c, not grep -q. Under `set -o pipefail`, `grep -q` exits on the
+    # first match, git status dies of SIGPIPE, and the pipeline returns 141 -
+    # so the test silently evaluates false on exactly the broken trees it is
+    # meant to catch. grep -c consumes all input and cannot be SIGPIPE'd.
+    staged_deletions="$(cd "$SRC_DIR" && git status --porcelain 2>/dev/null | grep -c '^D ' || true)"
+    if [ "${staged_deletions:-0}" -gt 0 ]; then
         echo "ERROR: $SRC_DIR looks like an interrupted checkout - tracked files are" >&2
         echo "       missing from the working tree. This is not recoverable in place." >&2
         echo "       Delete it and run setup.sh again:" >&2
