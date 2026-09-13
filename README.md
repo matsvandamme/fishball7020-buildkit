@@ -114,13 +114,16 @@ a weaker safety net than a folder on your own disk.
 # run on your HOST, from anywhere
 sudo apt update
 sudo apt install -y git build-essential bison flex libssl-dev \
-    device-tree-compiler u-boot-tools dfu-util screen \
-    gcc-13 g++-13 python3
+    device-tree-compiler u-boot-tools dfu-util screen python3
 ```
 
-- `gcc-13`/`g++-13` alongside your system's default GCC — one legacy
-  Buildroot host tool (`host-m4`) doesn't build under GCC ≥14's stricter C
-  defaults.
+- **No extra GCC needed on 22.04.** Jammy's default GCC 11 builds
+  everything. One legacy Buildroot host tool (`host-m4`) fails under
+  GCC ≥ 14's stricter C defaults, so *only* on a much newer distro do you
+  also need `gcc-13`/`g++-13` alongside the default compiler. `build_all.sh`
+  detects your GCC version and picks automatically — it never forces
+  `gcc-13` on a host that doesn't need it (and jammy doesn't even package
+  it).
 - `device-tree-compiler` (`dtc`) and `u-boot-tools` (`mkimage`) are used to
   build the device tree and the ramdisk image.
 - `dfu-util` and `screen` are only needed if you'll flash/debug over USB

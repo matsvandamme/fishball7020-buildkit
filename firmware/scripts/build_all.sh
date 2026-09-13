@@ -50,6 +50,26 @@ export CROSS_COMPILE=arm-linux-gnueabihf-
 CLEAN_PATH="$PATH"
 TOOLCHAIN_PATH="$SRC_DIR/buildroot/output/host/bin:$SRC_DIR/buildroot/output/host/sbin:$CLEAN_PATH"
 
+# Apply the board defconfig, then force every source download to go to
+# Buildroot's own mirror FIRST.
+#
+# By default Buildroot tries each package's upstream URL before falling back
+# to BR2_BACKUP_SITE. For the many GNU packages (m4, autoconf, automake,
+# libtool, ...) that upstream URL is http://ftpmirror.gnu.org, a redirector
+# that is regularly slow or unroutable - and every unreachable mirror costs a
+# multi-minute TCP timeout before the fallback is even attempted, which can
+# stall or fail the build for reasons that have nothing to do with this repo.
+# sources.buildroot.net carries the same tarballs and is reliable.
+#
+# This changes only WHERE sources are fetched from, never WHAT is fetched:
+# Buildroot still verifies every download against the recorded .hash file.
+buildroot_defconfig() {
+    PATH="$CLEAN_PATH" make -C "$SRC_DIR/buildroot" ARCH=arm zynq_pluto_defconfig
+    sed -i '/^BR2_PRIMARY_SITE=/d' "$SRC_DIR/buildroot/.config"
+    echo 'BR2_PRIMARY_SITE="https://sources.buildroot.net"' >> "$SRC_DIR/buildroot/.config"
+    PATH="$CLEAN_PATH" make -C "$SRC_DIR/buildroot" olddefconfig
+}
+
 echo "=== [1/7] Building HDL: synth -> impl -> bitstream -> hardware platform ==="
 (
     source "$REPO_ROOT/tools/env-vivado.sh"
@@ -61,7 +81,7 @@ echo "=== [1/7] Building HDL: synth -> impl -> bitstream -> hardware platform ==
 
 echo "=== [1b/7] Building the cross-compilation toolchain (Linaro GCC 7.3-2018.05) ==="
 if [ ! -x "$SRC_DIR/buildroot/output/host/bin/arm-linux-gnueabihf-gcc" ]; then
-    PATH="$CLEAN_PATH" make -C "$SRC_DIR/buildroot" ARCH=arm zynq_pluto_defconfig
+    buildroot_defconfig
     PATH="$CLEAN_PATH" make -C "$SRC_DIR/buildroot" toolchain
 else
     echo "    already built, skipping"
@@ -110,14 +130,34 @@ echo device-fw "$(cd "$SRC_DIR" && git describe --abbrev=4 --dirty --always --ta
 for d in hdl buildroot linux u-boot-xlnx; do
     echo "$d $(cd "$SRC_DIR/$d" && git describe --abbrev=4 --dirty --always --tags)" >> "$SRC_DIR/buildroot/board/pluto/VERSIONS"
 done
-PATH="$CLEAN_PATH" make -C "$SRC_DIR/buildroot" ARCH=arm zynq_pluto_defconfig
+buildroot_defconfig
 PATH="$CLEAN_PATH" make -C "$SRC_DIR/buildroot" legal-info
 mkdir -p "$SRC_DIR/build"
 (cd "$SRC_DIR" && PATH="$CLEAN_PATH" scripts/legal_info_html.sh "PlutoSDR" "$SRC_DIR/buildroot/board/pluto/VERSIONS")
 cp "$SRC_DIR/build/LICENSE.html" "$SRC_DIR/buildroot/board/pluto/msd/LICENSE.html"
 
+# Buildroot's bundled host-m4 doesn't build under GCC >= 14's stricter C
+# defaults, so on a very new distro we have to point HOSTCC at an older
+# compiler. Don't hardcode that: Ubuntu 22.04 (the supported host) ships
+# GCC 11, which builds it fine and does not package gcc-13 at all - forcing
+# HOSTCC=gcc-13 there fails with "Unable to locate package gcc-13".
+HOST_CC_ARGS=()
+gcc_major="$(gcc -dumpversion 2>/dev/null | cut -d. -f1)"
+if [ "${gcc_major:-0}" -ge 14 ]; then
+    if command -v gcc-13 >/dev/null 2>&1 && command -v g++-13 >/dev/null 2>&1; then
+        echo "    default gcc is $gcc_major (too new for host-m4); using gcc-13 for host tools"
+        HOST_CC_ARGS=(HOSTCC=gcc-13 HOSTCXX=g++-13)
+    else
+        echo "ERROR: your default gcc is $gcc_major, but Buildroot's host-m4 needs GCC <= 13." >&2
+        echo "       Install gcc-13 and g++-13, or build on a host with an older default gcc." >&2
+        exit 1
+    fi
+else
+    echo "    default gcc is ${gcc_major:-unknown}; using it for host tools"
+fi
+
 PATH="$CLEAN_PATH" "$BUILD_ALL_DIR/fix_and_retry_buildroot.sh" "$SRC_DIR" \
-    HOSTCC=gcc-13 HOSTCXX=g++-13 \
+    "${HOST_CC_ARGS[@]}" \
     BUSYBOX_CONFIG_FILE="$SRC_DIR/buildroot/board/pluto/busybox-1.25.0.config" all
 if [ ! -f "$SRC_DIR/buildroot/output/images/rootfs.cpio.gz" ]; then
     echo "ERROR: buildroot rootfs build failed - see /tmp/buildroot_autoretry_*.log" >&2
