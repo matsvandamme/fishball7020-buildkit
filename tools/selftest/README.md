@@ -123,6 +123,41 @@ pair 0, then asks you to move the loopback to TX2/RX2 and press Enter:
 With one set of attenuators you can only test one pair at a time, which is why
 it prompts rather than assuming. `--channel 1` runs just the second pair.
 
+## A firmware fault this tool found
+
+While a TX DMA buffer is streaming, changing the RX gain **occasionally resets
+the transmit attenuation to 10 dB** — the AD9361 driver's probe-time default —
+with no userspace write to cause it.
+
+What is established by measurement:
+
+- it never happens with the transmitter idle, only while a buffer streams;
+- nothing in this tool writes that value: every libiio write was logged and
+  correlated against the board's own view of the attenuator, and the write is
+  simply not there;
+- 10 dB is the value `ad9361_setup()` applies from `adi,tx-attenuation-mdB`.
+  Overriding that at runtime through debugfs does *not* change the value that
+  appears, so it is being restored from a copy cached at probe — most likely
+  `tx1_atten_cached`, which `ad9361_tx_mute(phy, 0)` restores and which is
+  seeded while the hardware still holds the device-tree default;
+- it is a race, not a threshold: a different single gain value triggers it on
+  each run.
+
+**It matters because of the PA.** Ten dB of attenuation is roughly +13 dBm on
+the transmit port, on a board whose receive port is rated to +2.5 dBm. So:
+keep a pad in any loopback, and do not assume the attenuator stays where you
+put it while transmitting.
+
+Every measurement here re-reads the gain and attenuation, re-asserts them if
+they have moved, and reports how often that happened — so this corrupts
+nothing in the results, and shows up in the report as a warning naming the
+fault rather than as a mysteriously wrong number.
+
+The likely fix is to make the device-tree default the muted value
+(`adi,tx-attenuation-mdB = <89750>`), so that a stale cache restores silence
+instead of +13 dBm. That is a firmware change and a reflash, so it is not
+applied here.
+
 ## Baselines
 
 Some things have absolute answers: a supply rail is in spec or it is not, and

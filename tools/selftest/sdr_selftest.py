@@ -371,6 +371,27 @@ PA_GAIN_DB = 18.0               # PGA-102+ worst case, used only for the budget
 AD9361_TX_MAX_DBM = 7.0         # at 0 dB attenuation, full-scale digital
 RX_MAX_INPUT_DBM = 2.5          # what the receive port survives
 PA_P1DB_DBM = 17.5              # PGA-102+ output at 1 dB compression
+
+# A firmware fault this tool works around, and reports rather than hides.
+#
+# With a TX DMA buffer streaming, changing the RX gain occasionally resets the
+# transmit attenuation to 10 dB. Established by measurement:
+#
+#   * it never happens with the transmitter idle - only while a buffer streams;
+#   * no such write is ever sent by this tool (every libiio write was logged
+#     and correlated against the board's own view of the attenuator);
+#   * 10 dB is the AD9361 driver's probe-time default, applied by ad9361_setup()
+#     from adi,tx-attenuation-mdB. Overriding that value at runtime through
+#     debugfs does NOT change the value that appears, so it is being restored
+#     from a copy cached at probe - most likely tx1_atten_cached, which
+#     ad9361_tx_mute(phy, 0) restores and which is seeded while the hardware
+#     still holds the device-tree default;
+#   * it is a race, not a threshold: a different single gain value triggers it
+#     on each run.
+#
+# It matters because of the PA. Ten dB of attenuation is roughly +13 dBm on the
+# transmit port, on a board whose receive port is rated to +2.5 dBm.
+KNOWN_TX_ATTEN_RESET = 10.0
 TARGET_RX_DBFS = -22.0          # aim the received tone here: loud, not clipping
 MAX_RX_DBFS = -6.0              # back off if anything gets nearer full scale
 
@@ -686,14 +707,17 @@ class Loop:
     def measure(self, n=16384, verify=True):
         """Capture and find the tone, checking the radio is still where we put it.
 
-        The read-back is not paranoia. During development the received level
-        jumped by ~48 dB twice, mid-sweep, with no command issued to cause it,
-        and the cause was never pinned down - gain mode, gain, attenuation and
-        the driver's mute paths all checked out afterwards. Rather than trust
-        that it cannot happen, every measurement confirms the settings still
-        read back as commanded, re-asserts them if not, and counts it. If the
-        count is non-zero the report says so, which turns an invisible source
-        of wrong numbers into a visible one.
+        The read-back is not paranoia, it is load-bearing. On this firmware the
+        transmit attenuation occasionally resets itself to 10 dB - the AD9361
+        driver's probe-time default - with no userspace write to cause it. It
+        is reproducible: change the RX gain while a TX DMA buffer is streaming
+        and it happens every few dozen changes, at no fixed gain. It never
+        happens with the transmitter idle. See KNOWN_TX_ATTEN_RESET below.
+
+        So every measurement confirms the settings still read back as
+        commanded, re-asserts them if not, and counts it - which keeps the
+        numbers honest and makes the underlying fault visible instead of
+        silently corrupting a sweep.
         """
         if verify:
             try:
@@ -1134,10 +1158,21 @@ def test_loopback(b, rep, args, pair=0):
     rep.data[f"ch{pair}_path_loss_curve"] = curve
 
     if loop.drifted:
-        rep.add(g, "settings changed on their own", WARN,
-                f"{len(loop.drifted)} time(s) the radio was not where it had "
-                f"been set; each was corrected before measuring. First: "
-                f"{loop.drifted[0]}")
+        known = sum(1 for d in loop.drifted
+                    if f"TX attenuation {KNOWN_TX_ATTEN_RESET:.2f}" in d)
+        detail = (f"{len(loop.drifted)} time(s) the radio was not where it had "
+                  f"been set; each was corrected before measuring. First: "
+                  f"{loop.drifted[0]}")
+        if known:
+            detail += (f"\n           {known} of those was the transmit "
+                       f"attenuation resetting to {KNOWN_TX_ATTEN_RESET:.0f} dB, "
+                       f"the driver's probe-time default - a known firmware "
+                       f"fault, not a fault in your board. It only happens "
+                       f"while a TX buffer is streaming. With the PA that is "
+                       f"about +13 dBm on the port, so keep a pad in any "
+                       f"loopback and do not rely on the attenuator staying "
+                       f"where you put it.")
+        rep.add(g, "settings changed on their own", WARN, detail)
     else:
         rep.add(g, "settings held throughout", INFO,
                 "every measurement confirmed the commanded gain and "
@@ -1531,11 +1566,29 @@ def main(argv=None):
     if not args.loopback:
         print("(analogue front end untested - rerun with --loopback)")
 
-    for path, payload in ((args.save_baseline, rep.data), (args.json, rep.data)):
-        if path:
-            with open(path, "w") as fh:
-                json.dump(payload, fh, indent=2, sort_keys=True)
-            print(f"wrote {path}")
+    if args.save_baseline:
+        # Merge rather than overwrite. With one set of attenuators you can only
+        # cable one channel at a time, so a two-channel baseline is necessarily
+        # built from two runs - and the second one must not throw away the
+        # first. Keys are per-channel, so they slot together.
+        merged = {}
+        try:
+            with open(args.save_baseline) as fh:
+                merged = json.load(fh)
+        except (FileNotFoundError, ValueError):
+            pass
+        kept = [k for k in merged if k not in rep.data and k.startswith("ch")]
+        merged.update(rep.data)
+        with open(args.save_baseline, "w") as fh:
+            json.dump(merged, fh, indent=2, sort_keys=True)
+        print(f"wrote {args.save_baseline}"
+              + (f" (kept {len(kept)} measurement(s) from the earlier run: "
+                 f"{', '.join(sorted(kept)[:3])}...)" if kept else ""))
+
+    if args.json:
+        with open(args.json, "w") as fh:
+            json.dump(rep.data, fh, indent=2, sort_keys=True)
+        print(f"wrote {args.json}")
     return code
 
 
