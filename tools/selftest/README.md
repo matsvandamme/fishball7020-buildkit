@@ -88,6 +88,12 @@ against what it measures and says so if the two disagree by more than 8 dB. A
 pad that is missing, is the wrong value, or is not making contact is the
 failure that destroys receivers, so it is worth one question.
 
+That comparison has a useful side effect: the PA and non-PA variants of this
+board differ by exactly the PA's gain, so a pad you are confident about tells
+the script which one you have. It reports that too — measured here, a declared
+50 dB pad reads back as 51 dB against the PA model and 35 dB against the
+bare-AD9361 one, which settles it.
+
 Other guarantees:
 
 - **Nothing transmits without `--loopback`.** The default run never keys the

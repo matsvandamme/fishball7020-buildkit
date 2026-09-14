@@ -370,6 +370,7 @@ START_TX_ATTEN_DB = 50.0        # where every loopback measurement begins
 PA_GAIN_DB = 18.0               # PGA-102+ worst case, used only for the budget
 AD9361_TX_MAX_DBM = 7.0         # at 0 dB attenuation, full-scale digital
 RX_MAX_INPUT_DBM = 2.5          # what the receive port survives
+PA_P1DB_DBM = 17.5              # PGA-102+ output at 1 dB compression
 TARGET_RX_DBFS = -22.0          # aim the received tone here: loud, not clipping
 MAX_RX_DBFS = -6.0              # back off if anything gets nearer full scale
 
@@ -575,15 +576,44 @@ def _system_gain(rx_dbfs, atten_db, rx_gain_db):
     return rx_dbfs - TX_DIGITAL_DBFS + atten_db - rx_gain_db
 
 
-def _implied_pad_db(system_gain):
+# Mini-Circuits PGA-102+ typical gain, from the datasheet. Interpolated in
+# log frequency because that is how the curve is shaped and how it is tabulated.
+PGA_102_GAIN = [(0.05e9, 17.7), (0.8e9, 15.9), (2.0e9, 14.0),
+                (3.0e9, 12.5), (4.0e9, 11.5), (6.0e9, 10.4)]
+
+
+def pa_gain_db(freq_hz):
+    """Typical PA gain at this frequency, for boards that have the PA fitted."""
+    pts = PGA_102_GAIN
+    if freq_hz <= pts[0][0]:
+        return pts[0][1]
+    if freq_hz >= pts[-1][0]:
+        return pts[-1][1]
+    for (f0, g0), (f1, g1) in zip(pts, pts[1:]):
+        if f0 <= freq_hz <= f1:
+            t = (math.log10(freq_hz) - math.log10(f0)) / \
+                (math.log10(f1) - math.log10(f0))
+            return g0 + t * (g1 - g0)
+    return pts[-1][1]
+
+
+# Loop gain with no external attenuation and no PA, from nominal figures for
+# the bare AD9361: about +7 dBm at full output, receive full scale about
+# +2.5 dBm at 0 dB gain.
+BARE_LOOP_GAIN_DB = 4.5
+
+
+def _implied_pad_db(system_gain, freq_hz, with_pa=True):
     """Roughly how much external attenuation is in the loop.
 
-    Uses nominal figures for this board (about +7 dBm at full output, receive
-    full scale about +2.5 dBm at 0 dB gain), so treat it as +/-3 dB - enough
-    to tell a 20 dB pad from a 50 dB one, or from a bare cable, which is all
-    it is for.
+    Getting the PA into this mattered: without it the model under-reads the
+    pad by the PA's gain, so a correct 50 dB pad on a PA-equipped board
+    measured as 35 dB and the cross-check called it a fault. Still +/-3 dB -
+    enough to tell a 20 dB pad from a 50 dB one, or from a bare cable, which
+    is all it is for.
     """
-    return 4.5 - system_gain
+    reference = BARE_LOOP_GAIN_DB + (pa_gain_db(freq_hz) if with_pa else 0.0)
+    return reference - system_gain
 
 
 class Loop:
@@ -707,6 +737,36 @@ class Loop:
     def system_gain(self, level):
         return _system_gain(level, self.atten, self.rx_gain)
 
+    def measure_system_gain(self, rx_gain=46.0):
+        """Loop gain, measured with RX gain inside the transition-free window.
+
+        system_gain() subtracts the COMMANDED RX gain, so it is only as honest
+        as the gain label. Above the AD9361's LNA transition at 52 dB the label
+        overstates the real gain by up to 15 dB, and that error lands straight
+        in the answer: measured at 66 dB gain, one channel's loop appeared to
+        have 13 dB more loss than the other, while the same two channels agreed
+        within 1.6 dB when both were measured at 46 dB. Path loss and the pad
+        cross-check are the numbers a baseline is built on, so they are taken
+        here, at a gain the chip is honest about.
+
+        Returns (system_gain_db, level_dbfs, trustworthy).
+        """
+        self.set_levels(rx_gain=rx_gain)
+        for _ in range(5):
+            level = self.measure(8192)[1]
+            if level > MAX_RX_DBFS:
+                self.set_levels(atten=self.atten + 10)
+                continue
+            if level < -75 and self.atten > self.min_atten:
+                self.set_levels(atten=self.atten - 10)
+                continue
+            break
+        level = self.measure(16384)[1]
+        # Only trustworthy if we stayed in the window and have signal to spare.
+        ok = self.gain_lo <= 38 or rx_gain <= 51
+        ok = ok and 38 <= self.rx_gain <= 51 and level > -75
+        return self.system_gain(level), level, ok
+
     def set_operating_point(self, sysg, rx_gain=46.0, target=TARGET_RX_DBFS):
         """Move to a DEFINED gain/attenuation pair, not wherever we landed.
 
@@ -799,27 +859,46 @@ def test_loopback(b, rep, args, pair=0):
                   f"that both connectors are tight.")
         return
 
-    sysg = loop.system_gain(level)
-    pad_measured = _implied_pad_db(sysg)
+    sysg, level, trusted = loop.measure_system_gain()
+    pad_measured = _implied_pad_db(sysg, centre, with_pa=True)
+    pad_no_pa = _implied_pad_db(sysg, centre, with_pa=False)
     rep.check(g, "loopback detected", True,
               f"tone {snr:.1f} dB above the floor at {centre/1e6:.1f} MHz; "
               f"TX attenuation {loop.atten:.0f} dB, RX gain {loop.rx_gain:.0f} dB")
+    # Which variant of the board is this? The two differ by the PA's gain, so
+    # a declared pad the user is confident about tells us which model fits.
+    has_pa = abs(pad_measured - args.pad) <= abs(pad_no_pa - args.pad)
     rep.add(g, "loop attenuation", INFO,
-            f"measures about {pad_measured:.0f} dB (+/-3 dB); you said "
-            f"{args.pad:.0f} dB. System gain {sysg:.1f} dB.",
+            f"measures about {(pad_measured if has_pa else pad_no_pa):.0f} dB "
+            f"(+/-3 dB); you said {args.pad:.0f} dB. System gain {sysg:.1f} dB.",
             value=round(sysg, 2), key=f"ch{pair}_system_gain_db")
+    rep.add(g, "board variant", INFO,
+            (f"consistent with the PA variant ({pa_gain_db(centre):.1f} dB of "
+             f"PGA-102+ gain at {centre/1e6:.0f} MHz)" if has_pa else
+             f"consistent with the variant WITHOUT the PA - the loop has "
+             f"{pa_gain_db(centre):.0f} dB less gain than a PA-equipped board"),
+            value=has_pa, key=f"ch{pair}_pa_fitted")
+    if not has_pa:
+        pad_measured = pad_no_pa
     rep.data[f"ch{pair}_implied_pad_db"] = round(pad_measured, 1)
 
     # Does the loop contain what the user believes it contains? Getting this
     # wrong is the mistake that kills receivers, so it is worth saying out loud
     # rather than leaving in a number nobody reads.
     disagreement = pad_measured - args.pad
-    rep.check(g, "the loop contains the attenuation you declared",
-              abs(disagreement) <= 8,
-              f"declared {args.pad:.0f} dB, measured {pad_measured:.0f} dB "
-              f"({disagreement:+.0f} dB). More than about 8 dB apart usually "
-              f"means a pad is missing, is a different value, or a connector "
-              f"is not making.", warn=abs(disagreement) <= 15)
+    if not trusted:
+        rep.add(g, "the loop contains the attenuation you declared", INFO,
+                f"measured {pad_measured:.0f} dB against your {args.pad:.0f} dB, "
+                f"but the signal was too weak to measure at a gain the chip is "
+                f"honest about, so the comparison is not reliable. Use less "
+                f"attenuation in the cable.")
+    else:
+        rep.check(g, "the loop contains the attenuation you declared",
+                  abs(disagreement) <= 8,
+                  f"declared {args.pad:.0f} dB, measured {pad_measured:.0f} dB "
+                  f"({disagreement:+.0f} dB). More than about 8 dB apart "
+                  f"usually means a pad is missing, is a different value, or a "
+                  f"connector is not making.", warn=abs(disagreement) <= 15)
 
     # -- image rejection ----------------------------------------------------
     # From here on, measure at a fixed operating point rather than wherever
@@ -998,15 +1077,25 @@ def test_loopback(b, rep, args, pair=0):
         gain_pt, level_pt = tx_power_point
         p_rx_dbm = level_pt + RX_MAX_INPUT_DBM - gain_pt
         p_tx_dbm = p_rx_dbm + args.pad
-        p_tx_full = p_tx_dbm + loop.atten - TX_DIGITAL_DBFS
-        headroom = p_tx_full - RX_MAX_INPUT_DBM
+        # Extrapolating to 0 dB attenuation and full-scale drive assumes the
+        # chain stays linear all the way up, and it does not: the PA compresses
+        # at about +17.5 dBm. Report the linear extrapolation, but say plainly
+        # where it stops being true rather than quoting +22 dBm from a part
+        # that cannot produce it.
+        p_tx_linear = p_tx_dbm + loop.atten - TX_DIGITAL_DBFS
+        p_tx_real = min(p_tx_linear, PA_P1DB_DBM + 1.5)
+        headroom = p_tx_real - RX_MAX_INPUT_DBM
+        note = ("" if p_tx_linear <= PA_P1DB_DBM + 1.5 else
+                f" (linear extrapolation says {p_tx_linear:+.1f} dBm, but the "
+                f"PGA-102+ compresses at about {PA_P1DB_DBM:+.1f} dBm, so it "
+                f"cannot deliver that)")
         rep.add(g, "transmit power", INFO,
                 f"{p_tx_dbm:+.1f} dBm at {loop.atten:.0f} dB attenuation and "
-                f"{TX_DIGITAL_DBFS:.0f} dBFS drive, so roughly "
-                f"{p_tx_full:+.1f} dBm flat out. Looping that back with no "
-                f"attenuator would put {headroom:+.0f} dB relative to the "
+                f"{TX_DIGITAL_DBFS:.0f} dBFS drive, so about {p_tx_real:+.1f} dBm "
+                f"flat out{note}. Looping that back with no attenuator would "
+                f"put {headroom:+.0f} dB relative to the "
                 f"{RX_MAX_INPUT_DBM:+.1f} dBm the receive port survives.",
-                value=round(p_tx_full, 1), key=f"ch{pair}_tx_power_max_dbm")
+                value=round(p_tx_real, 1), key=f"ch{pair}_tx_power_max_dbm")
 
     loop.set_levels(atten=base_atten, rx_gain=base_gain)
 
@@ -1032,9 +1121,12 @@ def test_loopback(b, rep, args, pair=0):
             b.tune(f, tx=True)
             time.sleep(0.12)
             loop.refresh_gain_limits()
-            loop.set_levels(atten=base_atten, rx_gain=base_gain)
-            lv = loop.autorange()[1]
-            curve[int(f)] = round(loop.system_gain(lv), 2)
+            loop.set_levels(atten=base_atten)
+            gsys, _lv, ok = loop.measure_system_gain()
+            curve[int(f)] = round(gsys, 2) if ok else None
+            if not ok:
+                rep.add(g, f"path loss at {f/1e6:.0f} MHz", INFO,
+                        "signal too weak to measure at a trustworthy gain")
         except Exception as exc:
             curve[int(f)] = None
             rep.add(g, f"path loss at {f/1e6:.0f} MHz", WARN, str(exc))
