@@ -1048,10 +1048,11 @@ The spread is the second result. Repeated passes on the same cable agree to
 connectors. That is why the self-test compares against a baseline you record
 with your own cable rather than against absolute thresholds.
 
-A **crossed** measurement — TX0 into RX1 — separates the transmit chain from the
-receive chain, which a straight loopback cannot. It shows the two transmitters
-match to 0.2 dB, the receivers differ by 1.5 dB, and the 4 GHz step lives
-entirely in the receiver, exactly as an RX gain-table change must.
+**Crossed** measurements — TX0 into RX1 and TX1 into RX0 — separate the transmit
+chain from the receive chain, which a straight loopback cannot. The two
+transmitters match to 0.25 dB, the receivers differ by 1.5 dB, and the 4 GHz step
+lives entirely in the receiver, exactly as an RX gain-table change must. With
+both crosses the system is over-determined and closes to −0.05 dB.
 
 Full tables, method and caveats — including what these numbers are *not* — in
 **[docs/measured-performance.md](docs/measured-performance.md)**.

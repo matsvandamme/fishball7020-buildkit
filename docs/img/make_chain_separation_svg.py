@@ -63,7 +63,7 @@ def build(t):
         o.append(f'<text x="{x(f)+10:.1f}" y="{y(v)+4:.1f}" font-size="12.5" fill="{c["primary"]}">{name}</text>')
     o.append(f'<text x="{gx-8:.1f}" y="{T+16}" text-anchor="end" font-size="11.5" fill="{c["muted"]}">4 GHz</text>')
     o.append(f'<text x="{L+14}" y="{y(-5.6):.1f}" font-size="11.5" fill="{c["muted"]}">'
-             f'across 4 GHz the receive difference steps 2.55 dB; the transmit difference moves 0.42 dB</text>')
+             f'across 4 GHz the receive difference steps 2.40 dB; the transmit difference moves 0.27 dB</text>')
     o.append(f'<text x="{L+14}" y="{y(-6.4):.1f}" font-size="11.5" fill="{c["muted"]}">'
              f'so the step is in the receiver, as an RX gain-table change should be</text>')
     o.append('</svg>')

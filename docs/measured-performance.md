@@ -161,31 +161,58 @@ Absolute `T` and `R` stay unknown — three equations, four unknowns, and no
 amount of loopback fixes that without an external calibrated reference. But the
 differences are fully determined, and they are what the questions turn on.
 
+Measuring **both** crosses over-determines the system, which buys two things: an
+independent route to each difference, and a closure check that needs no external
+reference at all.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/chain-separation-dark.svg">
-  <img alt="Channel difference against frequency, split into receive and transmit contributions. The receive difference sits near -1.5 dB and steps down by 2.55 dB at 4 GHz. The transmit difference stays near zero throughout, including across 4 GHz." src="img/chain-separation-light.svg">
+  <img alt="Channel difference against frequency, split into receive and transmit contributions. The receive difference sits near -1.5 dB and steps down by 2.4 dB at 4 GHz. The transmit difference stays near zero throughout, including across 4 GHz." src="img/chain-separation-light.svg">
 </picture>
 
-**The two transmitters are nearly identical.** `T0 − T1` sits at **+0.23 dB**
-below 4 GHz and +0.65 dB above — flat, within the measurement's own scatter.
+**The two transmitters are nearly identical.** `T0 − T1` sits at **+0.25 dB**
+below 4 GHz — flat, within the measurement's own scatter.
 
-**The receivers are not.** `R0 − R1` is **−1.46 dB** below 4 GHz: channel 1's
-receive chain is about 1.5 dB more sensitive. So the +1.8 dB by which channel 1's
-loop runs hotter is **the receiver, not the transmitter** — which a straight
-loopback could never have told you.
+**The receivers are not.** `R0 − R1` is **−1.48 dB**: channel 1's receive chain
+is about 1.5 dB more sensitive. So the +1.8 dB by which channel 1's loop runs
+hotter is **the receiver, not the transmitter** — which a straight loopback
+could never have told you.
 
 **And it locates the 4 GHz step.** Earlier the step was attributed to the AD9361
-swapping RX gain table. That is a falsifiable claim: if true, the step must
-appear in the receive difference and *not* in the transmit difference, because a
-transmitter knows nothing about an RX gain table. Across 4 GHz:
+swapping RX gain table. That is falsifiable: if true, the step must appear in the
+receive difference and *not* in the transmit difference, because a transmitter
+knows nothing about an RX gain table. Across 4 GHz:
 
 | | change across 4 GHz |
 |---|---|
-| `R0 − R1` | **−2.55 dB** |
-| `T0 − T1` | **+0.42 dB** |
+| `R0 − R1` | **−2.40 dB** |
+| `T0 − T1` | **+0.27 dB** |
 
-The step is in the receiver, and the transmitters barely move. It could have come
-out the other way; it did not.
+The step is in the receiver and the transmitters barely move. It could have come
+out the other way.
+
+### The closure check
+
+With all four configurations measured, the system is over-determined and must
+satisfy
+
+```
+L00 + L11  =  L01 + L10
+```
+
+Any departure is drift, non-reciprocity or error. Over 105 frequencies the
+residual is **−0.05 dB mean, +0.06 dB median**. The two independent routes to
+each difference agree to **0.04 dB**:
+
+| | route 1 | route 2 | agreement |
+|---|---|---|---|
+| `R0 − R1` (below 4 GHz) | −1.46 dB | −1.50 dB | 0.04 dB |
+| `T0 − T1` (below 4 GHz) | +0.23 dB | +0.27 dB | 0.04 dB |
+
+Individual frequencies reach 2.6 dB of residual — the same handful of weak,
+low-frequency points that scatter elsewhere — but the central tendency is at the
+level of the per-point repeatability. The measurements are self-consistent, and
+the separation above is not an artefact of one particular cabling.
 
 ```bash
 ./sdr_selftest.py --loopback --pad 20 --tx-channel 0 --rx-channel 1 \
