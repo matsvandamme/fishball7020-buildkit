@@ -68,6 +68,7 @@ except ImportError:                                     # optional, only faster
 PHY, RX, TX, XADC = "ad9361-phy", "cf-ad9361-lpc", "cf-ad9361-dds-core-lpc", "xadc"
 RX_LO, TX_LO = "altvoltage0", "altvoltage1"
 
+LO_MIN_HZ, LO_MAX_HZ = 70e6, 6e9      # what the AD9361 will tune to
 RX_FULL_SCALE = 2048.0          # 12-bit converter, sign-extended into int16
 TX_FULL_SCALE = 32768.0         # the DAC takes the full 16-bit range
 TX_ATTEN_MUTE = -89.75          # most attenuation the AD9361 offers
@@ -1169,8 +1170,7 @@ def test_loopback(b, rep, args, pair=0):
               warn=drop > 35, value=round(drop, 1), key=f"ch{pair}_tx_mute_depth_db")
 
     # -- path loss across the tuning range -----------------------------------
-    points = [100e6, 900e6, 2400e6] if args.quick else \
-             [100e6, 300e6, 700e6, 1200e6, 1800e6, 2400e6, 3500e6, 5000e6]
+    points = sweep_points(args)
     curve = {}
     loop.start()
     for f in points:
@@ -1225,6 +1225,31 @@ def test_loopback(b, rep, args, pair=0):
                      f"{', '.join(f'{k/1e6:.0f} MHz' for k in outliers)}"
                      if outliers else "; no band-specific hole"),
                   warn=bool(outliers))
+
+
+def sweep_points(args):
+    """Frequencies for the path-loss sweep, log-spaced across the tuning range.
+
+    Log spacing rather than linear: the response is a smooth roll-off over more
+    than six octaves, so equal ratios carry equal information and linear
+    spacing would spend most of its points above 3 GHz saying the same thing.
+
+    Endpoints are clamped into the AD9361's 70 MHz - 6 GHz range and rounded to
+    a kHz, so the requested frequency is one the synthesiser can actually take.
+    """
+    if args.quick:
+        return [100e6, 900e6, 2400e6]
+    lo = max(LO_MIN_HZ, min(args.sweep_start, args.sweep_stop))
+    hi = min(LO_MAX_HZ, max(args.sweep_start, args.sweep_stop))
+    n = max(2, args.sweep_points)
+    step = (math.log10(hi) - math.log10(lo)) / (n - 1)
+    seen, out = set(), []
+    for k in range(n):
+        f = round(10 ** (math.log10(lo) + k * step) / 1000) * 1000
+        if f not in seen:
+            seen.add(f)
+            out.append(float(f))
+    return out
 
 
 def _fit_slope(xs, ys):
@@ -1548,7 +1573,15 @@ def build_parser():
                    help="also run the AD9361 BIST checks, which need shell "
                         "access to the board (default password: analog)")
     p.add_argument("--quick", action="store_true",
-                   help="fewer frequency points")
+                   help="only three frequency points, for a fast check")
+    p.add_argument("--sweep-points", type=int, default=8, metavar="N",
+                   help="frequencies in the path-loss sweep, log-spaced "
+                        "(default: %(default)s). Raise it for a response curve "
+                        "worth plotting; each point costs about a second")
+    p.add_argument("--sweep-start", type=float, default=100e6, metavar="HZ",
+                   help="lowest sweep frequency (default: 100e6)")
+    p.add_argument("--sweep-stop", type=float, default=5e9, metavar="HZ",
+                   help="highest sweep frequency (default: 5e9)")
     p.add_argument("--baseline", metavar="FILE",
                    help="compare the results against this recording")
     p.add_argument("--save-baseline", metavar="FILE",

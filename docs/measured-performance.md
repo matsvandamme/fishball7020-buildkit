@@ -1,7 +1,7 @@
 # What this board actually measures
 
-Every number here came off one unit with `tools/selftest/sdr_selftest.py`, over
-six runs: both TX/RX channel pairs, each looped back through a 20 dB, a 30 dB
+Every number here came off one unit with `tools/selftest/sdr_selftest.py`. The
+tables below are six runs: both TX/RX channel pairs, each looped back through a 20 dB, a 30 dB
 and a 50 dB attenuator. Recording it three ways was not thoroughness for its own
 sake — it is what separates a property of the *board* from a property of the
 *cable*, and the two are easy to confuse.
@@ -76,33 +76,63 @@ neither is sufficient alone. See [Transmitter safety](../README.md#transmitter-s
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/loop-gain-dark.svg">
-  <img alt="TX to RX loop gain against frequency for both channels, 100 MHz to 5 GHz. Both channels peak near +20 dB around 300-700 MHz and roll off to +5 to +9 dB at 5 GHz. A shaded band shows the spread across three attenuator values: about 1-2 dB below 2 GHz, widening to 6-8 dB at 5 GHz." src="img/loop-gain-light.svg">
+  <img alt="TX to RX loop gain for channel 0 from 70 MHz to 6 GHz, 105 points. Gain rises from about +14 dB at 70 MHz to a plateau near +20 dB between 200 MHz and 1 GHz, then falls away, reaching about +3 dB at 6 GHz. A 4.6 dB upward step at 4 GHz is marked as the AD9361 changing RX gain table." src="img/loop-gain-light.svg">
 </picture>
 
-The board's own TX→RX transfer, with the external attenuator subtracted
-arithmetically so the three cable configurations can be compared. The line is
-the median of the three; the band is their spread.
+Channel 0 through a 20 dB attenuator, **105 frequencies** from 70 MHz to 6 GHz —
+a 60-point sweep over the whole range plus a 45-point pass concentrated on
+2.6–5.6 GHz, where the structure is. The band is the spread over repeated
+passes: **median 0.06 dB**.
 
-| MHz | 100 | 300 | 700 | 1200 | 1800 | 2400 | 3500 | 5000 |
-|---|---|---|---|---|---|---|---|---|
-| **Channel 0** (dB) | +16.6 | +19.5 | +19.6 | +18.3 | +16.1 | +14.2 | +10.9 | +5.4 |
-| **Channel 1** (dB) | +17.4 | +21.9 | +21.2 | +19.8 | +17.8 | +16.6 | +10.8 | +8.6 |
-| spread across pads, ch0 | 1.4 | 1.7 | 3.4 | 2.1 | 0.4 | 5.4 | 1.7 | 6.5 |
-| spread across pads, ch1 | 1.2 | 1.0 | 0.9 | 1.4 | 1.0 | 1.7 | 3.4 | 7.5 |
+| MHz | Loop gain (dB) |
+|---|---|
+| 70 | +14.1 |
+| 102 | +16.5 |
+| 201 | +20.7 |
+| 293 | +21.2 |
+| 498 | +20.8 |
+| 726 | +20.0 |
+| 981 | +19.3 |
+| 1543 | +16.6 |
+| 1935 | +16.5 |
+| 2427 | +14.2 |
+| 2989 | +11.7 |
+| 3281 | +9.6 |
+| 3951 | +6.2 |
+| 4021 | +10.8 |
+| 4464 | +11.0 |
+| 4957 | +4.9 |
+| 6000 | +3.0 |
 
-The shape is real: gain peaks in the low UHF range where the PA is strongest and
-falls away above 2 GHz, which is what a PGA-102+ and a wideband balun should do.
+Three things the sparse 8-point version could not show.
 
-**The spread is the more useful result.** Below 2 GHz the three cable
-configurations agree to about 1–2 dB — so a measurement there is telling you
-about the board. At 5 GHz they disagree by 6–8 dB, which is not the board
-changing between runs: it is SMA connector repeatability across three
-recablings. Above 2 GHz, absolute path loss measured this way is dominated by
-your cable.
+**A plateau near +20 dB from roughly 180 MHz to 1 GHz**, flat to about a
+decibel. That is the band this board is happiest in, and it is where the
+PGA-102+ has most of its gain.
 
-That is precisely why the self-test compares against a **baseline you record
-yourself with your own cable**, rather than against absolute thresholds. An
-absolute pass/fail band at 5 GHz would be meaningless.
+**A 4.6 dB step at 4 GHz** — from +6.2 dB at 3951 MHz to +10.8 dB at 4021 MHz,
+repeatable to 0.02 dB. This is **not** the hardware. The AD9361 swaps RX gain
+table at 4 GHz, and the two tables label their steps differently: the available
+manual gain range changes from `[-3, 71]` to `[-10, 62]` dB across that
+boundary, so a commanded 46 dB means a different real gain either side. Anything
+you calibrate below 4 GHz will be wrong above it by roughly this much. Verified
+directly by reading `hardwaregain_available` at 3.95 and 4.02 GHz.
+
+**70 MHz is the one point not to trust.** It spreads 4.7 dB across passes where
+every other point is inside 1.6 dB — the very bottom of the tuning range.
+
+### What the spread means
+
+Repeatability **without touching the cable** is 0.06 dB median, and better than
+0.11 dB everywhere above 2 GHz. Across three *different* attenuators, the same
+frequencies scattered by 6–8 dB up there. Same instrument, same board — the
+variable is the SMA connectors.
+
+So above 2 GHz, absolute path loss measured this way is dominated by your
+cabling, and that is exactly why the self-test compares against a **baseline you
+record with your own cable** rather than against absolute thresholds. Below
+2 GHz the three cable configurations agreed to 1–2 dB, so a measurement there is
+genuinely about the board.
 
 ## How well the tool knows your attenuator
 

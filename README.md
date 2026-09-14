@@ -1036,11 +1036,16 @@ One board, six runs — both channels, looped back through a 20 dB, a 30 dB and 
 The gain figure is the one that matters in practice: **a link budget you compute
 is the one you get.** Ask for 6 dB less and you get 6.0, not 5.2.
 
-The spread in that plot is the second result. Below 2 GHz the three cable
-configurations agree to 1–2 dB, so a measurement there is about the board. At
-5 GHz they disagree by 6–8 dB — SMA connector repeatability across three
-recablings, not the board changing. That is why the self-test compares against a
-baseline you record with your own cable rather than against absolute thresholds.
+The plot is 105 frequencies from 70 MHz to 6 GHz, repeatable to 0.06 dB. The
+**4.6 dB step at 4 GHz is not the hardware** — the AD9361 swaps RX gain table
+there and the two tables label their steps differently, so a calibration made
+below 4 GHz is wrong above it by about that much.
+
+The spread is the second result. Repeated passes on the same cable agree to
+0.06 dB; across three *different* attenuators the same frequencies scatter by
+6–8 dB above 2 GHz. Same board, same instrument — the variable is the SMA
+connectors. That is why the self-test compares against a baseline you record
+with your own cable rather than against absolute thresholds.
 
 Full tables, method and caveats — including what these numbers are *not* — in
 **[docs/measured-performance.md](docs/measured-performance.md)**.

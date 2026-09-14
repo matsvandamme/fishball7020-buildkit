@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="400" viewBox="0 0 760 400" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" role="img" aria-label="Transmit to receive loop gain against frequency for both channels">
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="400" viewBox="0 0 760 400" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" role="img" aria-label="Transmit to receive loop gain against frequency, 70 MHz to 6 GHz">
 <rect width="760" height="400" fill="#fcfcfb"/>
-<rect x="497.4" y="40" width="144.6" height="308" fill="#8a8985" opacity="0.07"/>
+<rect x="490.4" y="40" width="151.6" height="308" fill="#8a8985" opacity="0.07"/>
 <line x1="62" y1="348.0" x2="642" y2="348.0" stroke="#e6e5e1" stroke-width="1"/>
 <text x="52" y="352.0" text-anchor="end" font-size="12" fill="#52514e">0</text>
 <line x1="62" y1="288.8" x2="642" y2="288.8" stroke="#e6e5e1" stroke-width="1"/>
@@ -13,48 +13,27 @@
 <text x="52" y="115.1" text-anchor="end" font-size="12" fill="#52514e">20</text>
 <line x1="62" y1="51.8" x2="642" y2="51.8" stroke="#e6e5e1" stroke-width="1"/>
 <text x="52" y="55.8" text-anchor="end" font-size="12" fill="#52514e">25</text>
-<line x1="76.8" y1="348" x2="76.8" y2="353" stroke="#e6e5e1" stroke-width="1"/>
-<text x="76.8" y="369" text-anchor="middle" font-size="12" fill="#52514e">100</text>
-<line x1="174.1" y1="348" x2="174.1" y2="353" stroke="#e6e5e1" stroke-width="1"/>
-<text x="174.1" y="369" text-anchor="middle" font-size="12" fill="#52514e">200</text>
-<line x1="302.8" y1="348" x2="302.8" y2="353" stroke="#e6e5e1" stroke-width="1"/>
-<text x="302.8" y="369" text-anchor="middle" font-size="12" fill="#52514e">500</text>
-<line x1="400.1" y1="348" x2="400.1" y2="353" stroke="#e6e5e1" stroke-width="1"/>
-<text x="400.1" y="369" text-anchor="middle" font-size="12" fill="#52514e">1 GHz</text>
-<line x1="497.4" y1="348" x2="497.4" y2="353" stroke="#e6e5e1" stroke-width="1"/>
-<text x="497.4" y="369" text-anchor="middle" font-size="12" fill="#52514e">2</text>
-<line x1="626.1" y1="348" x2="626.1" y2="353" stroke="#e6e5e1" stroke-width="1"/>
-<text x="626.1" y="369" text-anchor="middle" font-size="12" fill="#52514e">5</text>
+<line x1="75.1" y1="348" x2="75.1" y2="353" stroke="#e6e5e1" stroke-width="1"/>
+<text x="75.1" y="369" text-anchor="middle" font-size="12" fill="#52514e">70</text>
+<line x1="119.2" y1="348" x2="119.2" y2="353" stroke="#e6e5e1" stroke-width="1"/>
+<text x="119.2" y="369" text-anchor="middle" font-size="12" fill="#52514e">100</text>
+<line x1="205.1" y1="348" x2="205.1" y2="353" stroke="#e6e5e1" stroke-width="1"/>
+<text x="205.1" y="369" text-anchor="middle" font-size="12" fill="#52514e">200</text>
+<line x1="318.6" y1="348" x2="318.6" y2="353" stroke="#e6e5e1" stroke-width="1"/>
+<text x="318.6" y="369" text-anchor="middle" font-size="12" fill="#52514e">500</text>
+<line x1="404.5" y1="348" x2="404.5" y2="353" stroke="#e6e5e1" stroke-width="1"/>
+<text x="404.5" y="369" text-anchor="middle" font-size="12" fill="#52514e">1 GHz</text>
+<line x1="490.4" y1="348" x2="490.4" y2="353" stroke="#e6e5e1" stroke-width="1"/>
+<text x="490.4" y="369" text-anchor="middle" font-size="12" fill="#52514e">2</text>
+<line x1="603.9" y1="348" x2="603.9" y2="353" stroke="#e6e5e1" stroke-width="1"/>
+<text x="603.9" y="369" text-anchor="middle" font-size="12" fill="#52514e">5</text>
 <text x="352" y="388" text-anchor="middle" font-size="12" fill="#52514e">Frequency (MHz, log scale)</text>
 <text x="16" y="194" text-anchor="middle" font-size="12" fill="#52514e" transform="rotate(-90 16 194)">TX&#8594;RX loop gain (dB)</text>
-<polygon points="76.8,140.3 231.1,115.7 350.0,82.3 425.7,112.9 482.6,155.5 523.0,178.8 576.0,207.1 626.1,214.8 626.1,291.5 576.0,227.5 523.0,242.2 482.6,160.4 425.7,137.1 350.0,123.0 231.1,136.0 76.8,156.6" fill="#2a78d6" opacity="0.16"/>
-<polygon points="76.8,137.3 231.1,83.8 350.0,88.6 425.7,97.9 482.6,126.0 523.0,151.6 576.0,179.5 626.1,158.8 626.1,248.1 576.0,220.4 523.0,171.7 482.6,138.4 425.7,114.3 350.0,98.8 231.1,96.2 76.8,151.5" fill="#eb6834" opacity="0.16"/>
-<polyline points="76.8,150.8 231.1,117.5 350.0,116.1 425.7,131.3 482.6,157.0 523.0,179.7 576.0,219.2 626.1,283.8" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="76.8" cy="150.8" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="231.1" cy="117.5" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="350.0" cy="116.1" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="425.7" cy="131.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="482.6" cy="157.0" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="523.0" cy="179.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="576.0" cy="219.2" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="626.1" cy="283.8" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<text x="638.1" y="287.8" font-size="13" fill="#0b0b0b">Channel 0</text>
-<polyline points="76.8,142.4 231.1,88.8 350.0,97.2 425.7,113.2 482.6,136.8 523.0,151.9 576.0,220.1 626.1,246.6" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="76.8" cy="142.4" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="231.1" cy="88.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="350.0" cy="97.2" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="425.7" cy="113.2" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="482.6" cy="136.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="523.0" cy="151.9" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="576.0" cy="220.1" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<circle cx="626.1" cy="246.6" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<text x="638.1" y="250.6" font-size="13" fill="#0b0b0b">Channel 1</text>
-<line x1="76" y1="52" x2="94" y2="52" stroke="#2a78d6" stroke-width="2" stroke-linecap="round"/>
-<circle cx="85" cy="52" r="3.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="1.5"/>
-<text x="101" y="56" font-size="12" fill="#0b0b0b">Channel 0</text>
-<line x1="76" y1="69" x2="94" y2="69" stroke="#eb6834" stroke-width="2" stroke-linecap="round"/>
-<circle cx="85" cy="69" r="3.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="1.5"/>
-<text x="101" y="73" font-size="12" fill="#0b0b0b">Channel 1</text>
-<text x="636.0" y="56" text-anchor="end" font-size="11.5" fill="#8a8985">above 2 GHz the spread is cabling, not the board</text>
-<text x="76" y="330" font-size="11.5" fill="#8a8985">shaded band = spread across the 20, 30 and 50 dB attenuators</text>
+<polygon points="75.1,180.3 84.4,169.7 93.7,188.2 103.1,155.6 112.4,166.3 121.8,145.7 131.1,140.0 140.5,134.4 149.8,125.5 159.2,124.0 168.5,117.7 177.9,110.4 187.2,110.7 196.6,104.3 205.9,98.9 215.2,97.1 224.6,107.9 233.9,98.0 243.3,99.5 252.6,93.2 262.0,95.7 271.3,114.9 280.7,97.8 290.0,101.8 299.4,98.0 308.7,98.6 318.1,99.9 327.4,112.9 336.8,111.3 346.1,104.7 355.4,108.6 364.8,109.4 374.1,116.1 383.5,110.8 392.8,113.1 402.2,118.9 411.5,130.6 420.9,135.2 430.2,133.2 439.6,131.9 448.9,136.5 458.3,150.1 467.6,158.2 477.0,151.9 486.3,151.7 495.6,152.1 505.0,160.8 514.3,180.0 522.9,198.0 523.7,198.5 525.1,200.3 527.2,201.9 529.4,202.5 531.5,202.8 533.0,203.4 533.7,204.1 535.9,205.8 538.0,208.1 540.2,209.8 542.3,210.0 542.4,210.0 544.5,211.8 546.7,217.1 548.8,224.3 551.0,231.3 551.7,233.6 553.1,235.7 555.3,234.4 557.5,229.7 559.6,227.1 561.1,229.7 561.8,232.0 563.9,243.8 566.1,255.4 568.3,265.0 570.4,271.4 570.4,271.8 572.6,274.7 574.7,274.2 576.9,219.6 579.1,217.2 579.8,217.1 581.2,220.8 583.4,225.9 585.5,227.4 587.7,223.0 589.1,219.0 589.9,216.7 592.0,216.2 594.2,221.2 596.3,230.6 598.5,248.0 598.5,249.1 600.7,271.7 602.8,289.7 605.0,297.9 607.1,303.8 607.8,306.1 609.3,311.2 611.5,319.1 613.6,321.5 615.8,326.0 617.1,330.3 617.9,333.7 626.5,312.1 626.5,313.3 617.9,334.4 617.1,331.5 615.8,326.2 613.6,321.7 611.5,319.2 609.3,312.1 607.8,306.4 607.1,304.3 605.0,298.5 602.8,290.3 600.7,272.3 598.5,249.6 598.5,248.7 596.3,230.8 594.2,221.8 592.0,216.9 589.9,217.7 589.1,219.2 587.7,223.3 585.5,227.4 583.4,226.0 581.2,221.1 579.8,218.9 579.1,218.0 576.9,219.8 574.7,274.9 572.6,275.3 570.4,271.9 570.4,271.9 568.3,265.7 566.1,256.4 563.9,243.8 561.8,232.0 561.1,230.1 559.6,227.6 557.5,230.0 555.3,234.9 553.1,235.8 551.7,234.4 551.0,231.6 548.8,224.4 546.7,217.1 544.5,212.1 542.4,210.7 542.3,210.3 540.2,209.9 538.0,208.2 535.9,206.4 533.7,204.5 533.0,204.1 531.5,202.8 529.4,202.9 527.2,202.2 525.1,200.3 523.7,199.4 522.9,198.1 514.3,180.1 505.0,161.7 495.6,152.7 486.3,152.7 477.0,154.2 467.6,159.1 458.3,152.3 448.9,138.0 439.6,133.6 430.2,138.4 420.9,136.4 411.5,132.4 402.2,119.6 392.8,122.1 383.5,114.2 374.1,120.7 364.8,112.4 355.4,112.9 346.1,120.0 336.8,116.3 327.4,113.6 318.1,103.0 308.7,118.3 299.4,117.7 290.0,108.2 280.7,113.7 271.3,115.6 262.0,113.4 252.6,99.9 243.3,99.9 233.9,116.1 224.6,113.6 215.2,114.5 205.9,106.2 196.6,116.8 187.2,112.9 177.9,116.8 168.5,124.7 159.2,136.0 149.8,143.3 140.5,141.5 131.1,157.5 121.8,159.5 112.4,180.0 103.1,183.6 93.7,203.1 84.4,172.9 75.1,180.7" fill="#2a78d6" opacity="0.35"/>
+<polyline points="75.1,180.5 84.4,171.3 93.7,195.7 103.1,169.6 112.4,173.2 121.8,152.6 131.1,148.7 140.5,138.0 149.8,134.4 159.2,130.0 168.5,121.2 177.9,113.6 187.2,111.8 196.6,110.5 205.9,102.5 215.2,105.8 224.6,110.7 233.9,107.0 243.3,99.7 252.6,96.6 262.0,104.6 271.3,115.2 280.7,105.7 290.0,105.0 299.4,107.9 308.7,108.5 318.1,101.5 327.4,113.2 336.8,113.8 346.1,112.3 355.4,110.7 364.8,110.9 374.1,118.4 383.5,112.5 392.8,117.6 402.2,119.3 411.5,131.5 420.9,135.8 430.2,135.8 439.6,132.8 448.9,137.3 458.3,151.2 467.6,158.6 477.0,153.1 486.3,152.2 495.6,152.4 505.0,161.2 514.3,180.1 522.9,198.1 523.7,199.0 525.1,200.3 527.2,202.1 529.4,202.7 531.5,202.8 533.0,203.7 533.7,204.3 535.9,206.1 538.0,208.2 540.2,209.8 542.3,210.2 542.4,210.3 544.5,211.9 546.7,217.1 548.8,224.4 551.0,231.4 551.7,234.0 553.1,235.8 555.3,234.6 557.5,229.8 559.6,227.3 561.1,229.9 561.8,232.0 563.9,243.8 566.1,255.9 568.3,265.3 570.4,271.7 570.4,271.9 572.6,275.0 574.7,274.6 576.9,219.7 579.1,217.6 579.8,218.0 581.2,220.9 583.4,225.9 585.5,227.4 587.7,223.1 589.1,219.1 589.9,217.2 592.0,216.5 594.2,221.5 596.3,230.7 598.5,248.4 598.5,249.3 600.7,272.0 602.8,290.0 605.0,298.2 607.1,304.1 607.8,306.2 609.3,311.6 611.5,319.2 613.6,321.6 615.8,326.1 617.1,330.9 617.9,334.0 626.5,312.7" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="636.5" y="316.7" font-size="13" fill="#0b0b0b">Channel 0</text>
+<text x="76" y="312.5" font-size="11.5" fill="#8a8985">105 points; band = spread over repeated passes, median 0.06 dB</text>
+<text x="76" y="332.6" font-size="11.5" fill="#8a8985">above 2 GHz, recabling shifts the whole curve by 6&#8211;8 dB</text>
+<line x1="575.8" y1="82.6" x2="575.8" y2="303.0" stroke="#8a8985" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="567.8" y="70.8" text-anchor="end" font-size="11.5" fill="#8a8985">AD9361 swaps RX gain table at 4 GHz &#8212; hence the step</text>
 </svg>
