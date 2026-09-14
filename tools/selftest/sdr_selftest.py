@@ -901,6 +901,11 @@ def test_loopback(b, rep, args, pair=0, rx_pair=None):
     floor = spec.floor()
     snr = _cap(level - floor)
 
+    # On-board TX->RX leakage alone clears a low threshold: with the cable
+    # unplugged entirely, a probe still came back 42 dB above the floor. So a
+    # weak return is NOT evidence of a loop, and calling it one sends people
+    # measuring their own leakage. The declared-pad cross-check below is the
+    # real guard; this is only the obvious case.
     if snr < 12:
         loop.stop()
         rep.check(g, "loopback detected", False,
@@ -940,6 +945,14 @@ def test_loopback(b, rep, args, pair=0, rx_pair=None):
     # wrong is the mistake that kills receivers, so it is worth saying out loud
     # rather than leaving in a number nobody reads.
     disagreement = pad_measured - args.pad
+    if trusted and disagreement > 20:
+        rep.add(g, "is a cable actually connected?", WARN,
+                f"the loop measures {pad_measured:.0f} dB against the "
+                f"{args.pad:.0f} dB you declared. A gap this large usually means "
+                f"there is no cable at all and what was detected is the board's "
+                f"own TX-to-RX leakage, which alone comes back tens of dB above "
+                f"the noise floor. Check the connectors before reading anything "
+                f"below as a measurement of the RF path.")
     if not trusted:
         rep.add(g, "the loop contains the attenuation you declared", INFO,
                 f"measured {pad_measured:.0f} dB against your {args.pad:.0f} dB, "
