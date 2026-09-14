@@ -6,7 +6,7 @@ contributions are welcome, but keep these in mind:
 - **HDL/kernel/U-Boot/Buildroot source itself isn't in this repo.**
   `firmware/src/` is cloned fresh by `setup.sh` from the real upstream
   fork (see the root README). If you have a fix for something in there,
-  turn it into a patch under `firmware/patches/` (see the existing two
+  turn it into a patch under `firmware/patches/` (see the existing ones
   for the format/style — `git diff` against a clean `setup.sh` checkout,
   or `git diff --cached` for new files) rather than committing the
   generated source tree itself.
