@@ -56,7 +56,8 @@ required either way.
   seconds-long iteration loop instead of a full rebuild.
 - **The transmitter is off unless you are transmitting** — stock firmware
   leaves the AD9361's TX chain biased from power-on, radiating LO leakage with
-  nothing in the DAC. This build mutes it whenever no TX buffer is streaming.
+  nothing in the DAC. This build mutes it and powers its synthesiser down
+  whenever no TX buffer is streaming.
   See [Transmitter safety](#transmitter-safety).
 - **Your changes are reproducible** — they live in `patches/`, so a clean
   clone rebuilds them on any machine.

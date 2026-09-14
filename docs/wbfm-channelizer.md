@@ -211,8 +211,12 @@ iio_attr -i -c cf-ad9361-lpc voltage0 sampling_frequency 528000   # <- engages t
 Read the converter rate back. If the AD9361 landed on something other than
 4224000, the channel is no longer at exactly Fs/4 and will sit off-centre.
 
-The flowgraph in `docs/grc/fishball_wbfm_rx.grc` does all of this for you
-from a Python snippet that runs after initialisation, because gr-iio programs
+The flowgraph in `docs/grc/fishball_wbfm_rx.grc` is written to do all of this
+for you — **but it has not yet been run against hardware**, so treat it as a
+starting point rather than a verified receiver. The FPGA filter itself has been
+measured (see above); the GNU Radio side has not.
+
+It sets both rates from a Python snippet that runs after initialisation, because gr-iio programs
 the AD9361 on its own and does not know about the FPGA decimator.
 
 **The test that actually proves it works** is an A/B. Set

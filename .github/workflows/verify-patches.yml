@@ -35,3 +35,17 @@ jobs:
       - name: Confirm the device tree patch actually landed
         run: |
           test -f firmware/src/linux/arch/arm/boot/dts/zynq-pluto-sdr-fishball.dts
+      - name: Confirm the TX safeguard and serial fallback landed
+        run: |
+          grep -q cf_axi_dds_tx_rf_mute firmware/src/linux/drivers/iio/frequency/cf_axi_dds.c
+          grep -q ad9361_tx_lo_powerdown firmware/src/linux/drivers/iio/adc/ad9361.h
+          grep -q 'mac_seed=' firmware/src/buildroot/board/pluto/S23udc
+      # setup.sh deliberately skips patches/optional/. Check they still apply
+      # anyway, so a worked example cannot rot against upstream unnoticed.
+      - name: Confirm optional patches still apply cleanly
+        run: |
+          cd firmware/src
+          for p in ../patches/optional/*.patch; do
+            echo "checking $(basename "$p")"
+            git apply --check "$p"
+          done
