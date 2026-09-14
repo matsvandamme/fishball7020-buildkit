@@ -15,6 +15,20 @@ SRC_DIR="$1"; shift
 MAX_ITERS=15
 LOG="/tmp/buildroot_autoretry_$$.log"
 
+
+# Discard a package's build directory so buildroot fetches and extracts it
+# again. Echoes nothing; returns the number of directories removed.
+clear_package_build_dirs() {
+    local pkg=$1 n=0 d
+    [ -n "$pkg" ] || return 0
+    for d in buildroot/output/build/"$pkg"-* buildroot/output/build/host-"$pkg"-*; do
+        [ -d "$d" ] || continue
+        rm -rf "$d" && n=$((n + 1))
+        echo "  discarded $d so it is fetched and extracted again" | tee -a "$LOG"
+    done
+    return $n
+}
+
 cd "$SRC_DIR"
 for i in $(seq 1 $MAX_ITERS); do
     echo "=== iteration $i ===" | tee -a "$LOG"
@@ -37,6 +51,20 @@ for i in $(seq 1 $MAX_ITERS); do
     got=$(grep -A2 "has wrong sha256 hash:" "$iter_log" | tail -3 | sed -n 's/ERROR: got     : //p')
 
     if [ -z "$fname" ] || [ -z "$got" ]; then
+        # A download that has gone missing while its build directory survives.
+        # Same underlying situation as a truncated one, different message:
+        #   cp: cannot stat '.../dl/libad9361-iio/libad9361-iio-0.2.tar.gz'
+        missing=$(grep -oE "cannot stat '[^']*/dl/[^']+'" "$iter_log" 2>/dev/null | tail -1 |
+                  sed "s/.*\/dl\///; s/\/.*//")
+        if [ -n "$missing" ]; then
+            echo "the download for $missing has gone missing; clearing it to be fetched again" | tee -a "$LOG"
+            clear_package_build_dirs "$missing"
+            if [ $? -gt 0 ]; then
+                continue
+            fi
+            echo "  nothing to clear for $missing; stopping." | tee -a "$LOG"
+            exit 1
+        fi
         echo "No recognizable hash-mismatch pattern found; stopping for manual inspection. See $LOG" | tee -a "$LOG"
         exit 1
     fi
@@ -69,22 +97,26 @@ for i in $(seq 1 $MAX_ITERS); do
     # An empty file is a FAILED DOWNLOAD, not hash drift. Recording its hash
     # would bake the corruption in and disable the check that caught it.
     #
-    # Clearing dl/ alone is not enough: buildroot keeps .stamp_downloaded and
-    # .stamp_extracted inside the package's build directory, so with those
-    # present it never re-fetches and the empty file survives every retry.
-    # Remove both, and let the package be redone from scratch.
+    # Two things have to go, together. Buildroot records .stamp_downloaded and
+    # .stamp_extracted inside the package's build directory, so with those in
+    # place it never re-fetches however clean dl/ is. But removing a download
+    # while leaving its build directory is equally broken the other way: the
+    # next legal-info step tries to copy a tarball that is no longer there and
+    # fails with "cannot stat", which is not a hash mismatch at all and so
+    # never reaches this repair. Clear BOTH, for EVERY package with a
+    # truncated download, in one pass.
     EMPTY_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
     if [ "$got" = "$EMPTY_SHA256" ]; then
         echo "$fname in $pkg hashed as an empty file - a failed download, not drift" | tee -a "$LOG"
-        removed=0
+        clear_package_build_dirs "$pkg"
+        removed=$?
         while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            victim=$(basename "$(dirname "$f")")
             rm -f "$f" && removed=$((removed + 1))
+            clear_package_build_dirs "$victim"
+            removed=$((removed + $?))
         done < <(find buildroot/dl -type f -size 0 ! -name '.lock' 2>/dev/null)
-        for d in buildroot/output/build/"$pkg"-* buildroot/output/build/host-"$pkg"-*; do
-            [ -d "$d" ] || continue
-            rm -rf "$d" && removed=$((removed + 1))
-            echo "  discarded $d so it is fetched and extracted again" | tee -a "$LOG"
-        done
         echo "  cleared $removed item(s); retrying" | tee -a "$LOG"
         if [ "$removed" -eq 0 ]; then
             echo "  ...but there was nothing to clear, so the file is genuinely empty upstream; stopping." | tee -a "$LOG"
