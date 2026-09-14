@@ -32,17 +32,58 @@ for i in $(seq 1 $MAX_ITERS); do
         exit 0
     fi
 
-    fname=$(grep "has wrong sha256 hash:" "/tmp/buildroot_iter_${i}_$$.log" | tail -1 | sed -n 's/ERROR: \(.*\) has wrong sha256 hash:/\1/p')
-    got=$(grep -A2 "has wrong sha256 hash:" "/tmp/buildroot_iter_${i}_$$.log" | tail -3 | sed -n 's/ERROR: got     : //p')
+    iter_log="/tmp/buildroot_iter_${i}_$$.log"
+    fname=$(grep "has wrong sha256 hash:" "$iter_log" | tail -1 | sed -n 's/ERROR: \(.*\) has wrong sha256 hash:/\1/p')
+    got=$(grep -A2 "has wrong sha256 hash:" "$iter_log" | tail -3 | sed -n 's/ERROR: got     : //p')
 
     if [ -z "$fname" ] || [ -z "$got" ]; then
         echo "No recognizable hash-mismatch pattern found; stopping for manual inspection. See $LOG" | tee -a "$LOG"
         exit 1
     fi
 
-    hash_file=$(grep -rl "$fname" buildroot/package/*/*.hash 2>/dev/null | head -1)
+    # An empty file is a FAILED DOWNLOAD, not hash drift. Recording its hash
+    # would bake the corruption in and make the check that caught it useless.
+    # Delete the artifact so buildroot fetches it again, and retry. This is
+    # the common case after a build is interrupted mid-download.
+    EMPTY_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    if [ "$got" = "$EMPTY_SHA256" ]; then
+        echo "$fname hashed as an empty file - treating as a failed download, not drift" | tee -a "$LOG"
+        n=$(find buildroot/dl -type f -size 0 -not -name '.lock' -print -delete 2>/dev/null | wc -l)
+        echo "  removed $n empty download(s); retrying" | tee -a "$LOG"
+        if [ "$n" -eq 0 ]; then
+            echo "  ...but found none to remove, so this is not a truncated download; stopping." | tee -a "$LOG"
+            exit 1
+        fi
+        continue
+    fi
+
+    # Identify the package from make's own error line, which names the .mk it
+    # was running:
+    #     make[1]: *** [package/dosfstools/dosfstools.mk:62: ...] Error 1
+    # Do NOT search for $fname across every .hash file. Tarball names are
+    # distinctive, but legal-info failures report a LICENSE filename - COPYING
+    # appears in over a thousand .hash files, so that search silently picks
+    # the alphabetically first package and patches something unrelated, while
+    # the real failure recurs until MAX_ITERS. That happened.
+    pkg=$(grep -oE 'package/[a-zA-Z0-9_.+-]+/[a-zA-Z0-9_.+-]+\.mk' "$iter_log" | tail -1 | cut -d/ -f2)
+    if [ -z "$pkg" ]; then
+        pkg=$(grep -oE '^>>> (host-)?[a-zA-Z0-9_.+-]+ ' "$iter_log" | tail -1 | awk '{print $2}' | sed 's/^host-//')
+    fi
+    if [ -z "$pkg" ]; then
+        echo "Could not tell which package failed; stopping rather than guessing. See $LOG" | tee -a "$LOG"
+        exit 1
+    fi
+
+    hash_file=$(ls buildroot/package/"$pkg"/"$pkg".hash 2>/dev/null | head -1)
     if [ -z "$hash_file" ]; then
-        echo "Could not find a .hash file referencing $fname; stopping." | tee -a "$LOG"
+        hash_file=$(ls buildroot/package/*/"$pkg".hash 2>/dev/null | head -1)
+    fi
+    if [ -z "$hash_file" ]; then
+        echo "Could not find a .hash file for package '$pkg'; stopping." | tee -a "$LOG"
+        exit 1
+    fi
+    if ! grep -qE "^sha256[[:space:]]+\S+[[:space:]]+$(printf '%s' "$fname" | sed 's/[.[\*^$]/\\&/g')[[:space:]]*$" "$hash_file"; then
+        echo "$hash_file does not record a hash for $fname; stopping rather than guessing." | tee -a "$LOG"
         exit 1
     fi
 
