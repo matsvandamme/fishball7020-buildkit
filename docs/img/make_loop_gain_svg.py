@@ -63,8 +63,18 @@ def build(t):
         rows = data[k]; name, slot = NAMES[k]
         o.append(f'<polyline points="{" ".join(f"{x(f):.1f},{y(m):.1f}" for f,m,_l,_h in rows)}" '
                  f'fill="none" stroke="{c[slot]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
-        f, m = rows[-1][0], rows[-1][1]
-        o.append(f'<text x="{x(f)+10:.1f}" y="{y(m)+4:.1f}" font-size="13" fill="{c["primary"]}">{name}</text>')
+    # Direct labels, pushed apart if the curves end close together. Two series
+    # finishing within a decibel of each other would otherwise overprint.
+    ends = sorted(((y(data[k][-1][1]) + 4, x(data[k][-1][0]) + 10, NAMES[k][0]) for k in keys),
+                  key=lambda e: e[0])
+    MIN_GAP = 16
+    placed = []
+    for ly, lx, name in ends:
+        if placed and ly - placed[-1][0] < MIN_GAP:
+            ly = placed[-1][0] + MIN_GAP
+        placed.append((ly, lx, name))
+    for ly, lx, name in placed:
+        o.append(f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="13" fill="{c["primary"]}">{name}</text>')
     if len(keys) > 1:
         lx, ly = L+14, T+16
         for i, k in enumerate(keys):
@@ -73,7 +83,7 @@ def build(t):
             o.append(f'<text x="{lx+25}" y="{yy}" font-size="12" fill="{c["primary"]}">{name}</text>')
     # Caveats live bottom-left, where the plot is empty at every frequency.
     o.append(f'<text x="{L+14}" y="{y(3.0):.1f}" font-size="11.5" fill="{c["muted"]}">'
-             f'105 points; band = spread over repeated passes, median 0.06 dB</text>')
+             f'105 points per channel; band = spread over repeated passes, median under 0.1 dB</text>')
     o.append(f'<text x="{L+14}" y="{y(1.3):.1f}" font-size="11.5" fill="{c["muted"]}">'
              f'above 2 GHz, recabling shifts the whole curve by 6&#8211;8 dB</text>')
     # The AD9361 swaps RX gain table at 4 GHz. The step in the curve is that,

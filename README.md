@@ -1036,10 +1036,11 @@ One board, six runs — both channels, looped back through a 20 dB, a 30 dB and 
 The gain figure is the one that matters in practice: **a link budget you compute
 is the one you get.** Ask for 6 dB less and you get 6.0, not 5.2.
 
-The plot is 105 frequencies from 70 MHz to 6 GHz, repeatable to 0.06 dB. The
-**4.6 dB step at 4 GHz is not the hardware** — the AD9361 swaps RX gain table
-there and the two tables label their steps differently, so a calibration made
-below 4 GHz is wrong above it by about that much.
+The plot is 105 frequencies per channel from 70 MHz to 6 GHz, repeatable to
+under 0.1 dB. The **step at 4 GHz is not the hardware** — the AD9361 swaps RX
+gain table there and the two tables label their steps differently, so a gain
+calibration made below 4 GHz is wrong above it: by about 5 dB on channel 0 and
+7 dB on channel 1.
 
 The spread is the second result. Repeated passes on the same cable agree to
 0.06 dB; across three *different* attenuators the same frequencies scatter by

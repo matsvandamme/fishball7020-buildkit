@@ -79,30 +79,33 @@ neither is sufficient alone. See [Transmitter safety](../README.md#transmitter-s
   <img alt="TX to RX loop gain for channel 0 from 70 MHz to 6 GHz, 105 points. Gain rises from about +14 dB at 70 MHz to a plateau near +20 dB between 200 MHz and 1 GHz, then falls away, reaching about +3 dB at 6 GHz. A 4.6 dB upward step at 4 GHz is marked as the AD9361 changing RX gain table." src="img/loop-gain-light.svg">
 </picture>
 
-Channel 0 through a 20 dB attenuator, **105 frequencies** from 70 MHz to 6 GHz —
-a 60-point sweep over the whole range plus a 45-point pass concentrated on
-2.6–5.6 GHz, where the structure is. The band is the spread over repeated
-passes: **median 0.06 dB**.
+Both channels through the same 20 dB attenuator, **105 frequencies each** from
+70 MHz to 6 GHz — a 60-point sweep over the whole range plus a 45-point pass
+concentrated on 2.6–5.6 GHz, where the structure is. The band is the spread over
+repeated passes: **median 0.06 dB on channel 0, 0.07 dB on channel 1**.
 
-| MHz | Loop gain (dB) |
-|---|---|
-| 70 | +14.1 |
-| 102 | +16.5 |
-| 201 | +20.7 |
-| 293 | +21.2 |
-| 498 | +20.8 |
-| 726 | +20.0 |
-| 981 | +19.3 |
-| 1543 | +16.6 |
-| 1935 | +16.5 |
-| 2427 | +14.2 |
-| 2989 | +11.7 |
-| 3281 | +9.6 |
-| 3951 | +6.2 |
-| 4021 | +10.8 |
-| 4464 | +11.0 |
-| 4957 | +4.9 |
-| 6000 | +3.0 |
+| MHz | Channel 0 (dB) | Channel 1 (dB) |
+|---|---|---|
+| 70 | +14.1 | +14.3 |
+| 102 | +16.5 | +17.3 |
+| 201 | +20.7 | +20.8 |
+| 293 | +21.2 | +22.6 |
+| 498 | +20.8 | +20.8 |
+| 726 | +20.0 | +20.9 |
+| 981 | +19.3 | +20.3 |
+| 1543 | +16.6 | +18.4 |
+| 1935 | +16.5 | +17.8 |
+| 2427 | +14.2 | +16.4 |
+| 2989 | +11.7 | +12.6 |
+| 3281 | +9.6 | +10.9 |
+| 3951 | +6.2 | +8.4 |
+| 4021 | +10.8 | +15.7 |
+| 4464 | +11.0 | +15.3 |
+| 4957 | +4.9 | +9.1 |
+| 6000 | +3.0 | +4.0 |
+
+Channel 1 runs **+1.8 dB hotter on average**, ranging from −2.8 to +4.9 dB
+across the sweep. Both curves have the same shape.
 
 Three things the sparse 8-point version could not show.
 
@@ -110,13 +113,18 @@ Three things the sparse 8-point version could not show.
 decibel. That is the band this board is happiest in, and it is where the
 PGA-102+ has most of its gain.
 
-**A 4.6 dB step at 4 GHz** — from +6.2 dB at 3951 MHz to +10.8 dB at 4021 MHz,
-repeatable to 0.02 dB. This is **not** the hardware. The AD9361 swaps RX gain
-table at 4 GHz, and the two tables label their steps differently: the available
-manual gain range changes from `[-3, 71]` to `[-10, 62]` dB across that
-boundary, so a commanded 46 dB means a different real gain either side. Anything
-you calibrate below 4 GHz will be wrong above it by roughly this much. Verified
-directly by reading `hardwaregain_available` at 3.95 and 4.02 GHz.
+**A step at 4 GHz — 4.6 dB on channel 0, 7.4 dB on channel 1.** Channel 0 goes
+from +6.2 dB at 3951 MHz to +10.8 dB at 4021; channel 1 from +8.4 to +15.7.
+Repeatable to 0.02 dB, and **not the hardware**. The AD9361 swaps RX gain table
+at 4 GHz, and the two tables label their steps differently: the available manual
+gain range changes from `[-3, 71]` to `[-10, 62]` dB across that boundary, so a
+commanded 46 dB means a different real gain either side. Verified by reading
+`hardwaregain_available` at 3.95 and 4.02 GHz.
+
+The practical consequence: **a gain calibration made below 4 GHz is wrong above
+it**, by about 5 dB on channel 0 and 7 dB on channel 1. That the two channels
+disagree on the size of the step is itself worth knowing — it is not a single
+constant you can correct out globally.
 
 **70 MHz is the one point not to trust.** It spreads 4.7 dB across passes where
 every other point is inside 1.6 dB — the very bottom of the tuning range.
