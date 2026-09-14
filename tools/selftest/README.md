@@ -15,6 +15,32 @@ four decimal places, which `test_dsp.py` asserts.
 
 ---
 
+## What it actually does, in plain terms
+
+The board is a radio. This asks it a series of questions whose right answers are
+known, and reports where reality departs from them.
+
+Some questions need nothing connected — is the power supply the right voltage,
+is the chip too hot, does the receiver respond when you turn its gain up. Others
+need the transmit socket wired to the receive socket so the board can listen to
+itself, which is called a **loopback**. In between them you must fit an
+**attenuator** — a small inline part that weakens the signal by a fixed amount,
+quoted in decibels — because the transmitter is far stronger than the receiver
+can survive.
+
+A few terms used throughout:
+
+- **dB (decibel)** — a ratio, not an amount. 10 dB is ten times the power, 20 dB
+  a hundred, 30 dB a thousand. They add, so two 10 dB attenuators make 20 dB.
+- **dBFS** — how loud a received signal is relative to the largest the converter
+  can represent. Always negative; −20 dBFS is a tenth of full scale.
+- **dBc** — how far an unwanted signal sits below the wanted one. Bigger is
+  better.
+- **Noise floor** — the level of the background hiss. A signal is only useful if
+  it is above this.
+- **Attenuation / pad** — deliberate weakening. "A 30 dB pad" is a part that
+  makes the signal a thousand times weaker in power.
+
 ## Two halves
 
 ### Without a cable — and without transmitting

@@ -9,6 +9,44 @@ sake — it is what separates a property of the *board* from a property of the
 Firmware [v1.1](../../releases/tag/v1.1), room temperature, one afternoon, one
 board. Read the [caveats](#what-these-numbers-are-not) before quoting any of it.
 
+## The units, first
+
+The numbers below use four RF conventions. If any are unfamiliar, this is all
+you need.
+
+**dBFS — "how loud, relative to the maximum".** The receiver's converter has a
+largest number it can represent; 0 dBFS is that, and everything real is
+negative. −20 dBFS is a tenth of full scale in voltage. A signal at −90 dBFS is
+close to the noise.
+
+**dBc — "how far below the wanted signal".** Used for unwanted products. If a
+tone is at −20 dBFS and an unwanted copy of it sits at −70 dBFS, the copy is
+50 dBc down. Bigger is better, and it does not depend on how loud you were
+transmitting.
+
+**dB per dB — "does the control do what it says?"** Turn the gain down 6 dB and
+the signal should drop 6 dB. That is 1.000 dB per dB. Anything else means the
+dial is lying to you, and by how much.
+
+**Decibels are ratios, so they add.** 10 dB is ten times the power, 20 dB is a
+hundred times, 30 dB a thousand. Two 10 dB attenuators in series give 20 dB.
+That is why an attenuator's value can simply be subtracted from a measurement.
+
+Three measurements below need a sentence each:
+
+- **Image rejection.** A radio like this handles a signal as two streams called
+  I and Q. If they are not perfectly balanced, a signal at +250 kHz also
+  produces a faint mirror at −250 kHz that was never on the air. Image rejection
+  is how far down that mirror is. Poor rejection means a strong station can put
+  a ghost on top of a weak one you actually want.
+- **Harmonic distortion.** Any real amplifier is slightly non-linear, so a pure
+  tone at 250 kHz also generates a little energy at 500 kHz, 750 kHz and so on.
+  The 2nd and 3rd harmonics are the ones quoted; further down is better.
+- **Loop gain / path loss.** With transmit cabled to receive through an
+  attenuator, this is what the signal gained or lost going round the loop. It
+  describes the board's amplifiers *plus* your cable — which is why separating
+  those two matters, and why a whole section below is about it.
+
 ## The short version
 
 The board is well behaved and the two channels are closely matched. Programmable
@@ -17,8 +55,8 @@ most of its capacity free.
 
 | | |
 |---|---|
-| **Gain accuracy** | 12 slope measurements, every one within **1.4% of unity** |
-| **Image rejection** | **55–63 dBc** after calibration (41–48 dBc as found) |
+| **Gain accuracy** (does the dial tell the truth?) | 12 slope measurements, every one within **1.4% of unity** |
+| **Image rejection** (mirror suppression) | **55–63 dBc** after calibration (41–48 dBc as found) |
 | **Harmonic distortion** | **−67 to −79 dBc** |
 | **Transmit power** | **+19 dBm** flat out, agreeing to 0.7 dB across six runs |
 | **Transmit mute depth** | **63–70 dB**, into the noise floor |

@@ -448,6 +448,23 @@ Analog Devices' drivers in it, and a good deal of the board's *behaviour* —
 what appears in `/sys`, when the transmitter is muted, what the serial number
 is — lives there rather than in the fabric.
 
+Four terms, if they are new:
+
+- **The kernel** is Linux itself, built here as a single file called `uImage`
+  that the bootloader loads. Change a driver and you rebuild that one file.
+- **A driver** is the kernel code that operates a piece of hardware. The two
+  that matter here run the AD9361 radio chip and the FPGA's capture/playback
+  blocks.
+- **The device tree** is a data file (`devicetree.dtb`) describing what hardware
+  exists and where — addresses, interrupts, which pins do what. Linux has no way
+  to probe that on this kind of board, so it is told. It is compiled from a
+  `.dts` text source.
+- **A defconfig** is a saved set of kernel build options. Applying one decides
+  what gets compiled in.
+
+You are **cross-compiling**: building ARM code on your x86 machine, which is why
+every command carries `ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`.
+
 ### What is already patched, and why
 
 | Patch | Touches | Does |
@@ -1170,6 +1187,14 @@ Full tables, method and caveats — including what these numbers are *not* — i
 If you have overdriven an input, transmitted into an open port, or the board
 has simply stopped behaving, `tools/selftest/` answers the question with
 measurements rather than with "well, it still enumerates".
+
+It asks the board a series of questions whose right answers are known — is the
+supply voltage correct, is the chip too hot, does the receiver respond when you
+turn its gain up — and reports where reality departs from them. Most need
+nothing plugged in. The rest need the transmit socket cabled to the receive
+socket through an **attenuator**, a small inline part that weakens the signal by
+a fixed number of decibels, so the board can listen to itself without the
+transmitter overwhelming the receiver.
 
 ```bash
 cd tools/selftest
