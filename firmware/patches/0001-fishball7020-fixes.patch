@@ -1,5 +1,5 @@
 diff --git a/buildroot/board/pluto/S23udc b/buildroot/board/pluto/S23udc
-index 091afe679..202347f00 100755
+index 091afe679..1de0a00da 100755
 --- a/buildroot/board/pluto/S23udc
 +++ b/buildroot/board/pluto/S23udc
 @@ -47,7 +47,7 @@ create_iiod_context_attributes() {
@@ -11,15 +11,47 @@ index 091afe679..202347f00 100755
  	if [ "$USBPID" == "0xb673" ]; then
  		echo ad9361-phy,xo_correction=`cat /sys/bus/iio/devices/${DEV_NAME}/xo_correction` >> /etc/libiio.ini
  		echo ad9361-phy,model=$AD936X_TYPE >> /etc/libiio.ini
-@@ -69,7 +69,7 @@ case "$1" in
+@@ -69,12 +69,38 @@ case "$1" in
  	model_variant=`dmesg | grep m25p80 | grep Kbytes | cut -d ' ' -f 3`
  
  	serial=`dmesg | grep SPI-NOR-UniqueID`
 -	serial=104473023196000bf5ff1a00aae12c3ca8
 +	serial=${serial#*SPI-NOR-UniqueID }
++
++	# The USB gadget MACs below are sha1($serial). Seed them from the
++	# ORIGINAL value, so substituting a fallback serial cannot change them -
++	# a changed MAC renames the host's network interface (enx<mac>) and
++	# silently breaks any static IP or NetworkManager profile bound to it.
++	mac_seed="$serial"
++
++	if [ -z "$serial" ]; then
++		# This board's flash is a Winbond W25Q128, and only Micron parts
++		# make the kernel print SPI-NOR-UniqueID, so the lookup above
++		# finds nothing and hw_serial ends up empty. Anything that
++		# identifies a Pluto by serial then cannot open it at all -
++		# SDRangel reports "open serial TBD failed" and offers no device.
++		#
++		# This SoC exposes no unique hardware id (no device-tree
++		# serial-number, no DNA, no efuse), so mint one once and keep it
++		# in the persistent jffs2 store, which is mounted by S21misc
++		# before this script runs.
++		serial_file=/mnt/jffs2/hw_serial
++		if [ -s "$serial_file" ]; then
++			serial=`cat "$serial_file"`
++		else
++			serial=`head -c 16 /dev/urandom | hexdump -v -e '/1 "%02x"'`
++			echo "$serial" > "$serial_file" 2>/dev/null
++		fi
++	fi
  
  	create_iiod_context_attributes "$model" "$serial" "$model_variant"
  
+ 	echo $serial > /etc/serial
+-	sha1=`echo $serial | sha1sum`
++	sha1=`echo $mac_seed | sha1sum`
+ 
+ 	echo 0x0456 > $GADGET/idVendor
+ 	echo $USBPID > $GADGET/idProduct
 diff --git a/buildroot/configs/zynq_pluto_defconfig b/buildroot/configs/zynq_pluto_defconfig
 index 6203766e0..ba275c12c 100755
 --- a/buildroot/configs/zynq_pluto_defconfig

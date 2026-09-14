@@ -762,13 +762,13 @@ fishball7020-fpga-devkit/
     ├── README.md                       deep technical reference: exact patch list, provenance,
     │                                   byte-for-byte comparison results against real hardware
     ├── patches/
-    │   ├── 0001-fishball7020-fixes.patch        6 real fixes (see firmware README for details)
+    │   ├── 0001-fishball7020-fixes.patch        6 real fixes + a persistent hw_serial (see firmware README)
     │   ├── 0002-add-fishball-devicetree.patch   the board's actual device tree, as source
     │   ├── 0004-mute-tx-when-no-dma-stream.patch TX safeguard (see Transmitter safety)
     │   └── optional/                             NOT applied by setup.sh — worked examples
     │       └── 0003-wbfm-channelizer.patch      the FM channelizer (docs/wbfm-channelizer.md)
     ├── scripts/
-    │   ├── setup.sh                    (run once) clones upstream source into src/, applies patches/
+    │   ├── setup.sh                    (run once) clones upstream source into src/, applies patches/*.patch (not optional/)
     │   ├── build_all.sh                (run every time) full build → output/
     │   ├── build_hdl.tcl               Vivado batch script: synth → impl → export hardware platform
     │   ├── gen_fsbl_create.tcl         Vitis/xsct: scaffold the FSBL app from the hardware platform
@@ -814,9 +814,9 @@ hooks the TX buffer lifecycle the DAC driver already has:
 
 | Event | What happens |
 |---|---|
-| driver probe | TX muted — so the board is quiet from boot |
+| boot (`S21misc`) | TX attenuated to maximum, so the board is quiet before anything streams |
 | a TX buffer starts streaming | TX unmuted, restoring **your** attenuation |
-| the buffer stops | TX muted again, automatically |
+| the buffer stops | TX muted again and the TX synthesiser powered down, automatically |
 
 It works by calling `ad9361_tx_mute()`, ADI's own exported helper, which was
 present in the kernel tree but called from nowhere. It caches both channels'
@@ -832,6 +832,12 @@ No device tree change was needed — the driver finds the phy through the DDS
 node's existing `clocks` phandle — so `devicetree.dtb` stays byte-identical to
 the factory firmware.
 
+Measured over a 50 dB attenuated TX→RX loopback: **the mute costs no output
+power.** Commanded and applied attenuation matched to 0.01 dB at every point
+including 0 dB, and received level tracked commanded gain across 40 dB within
+1.9 dB. While a stream runs, the chip is in exactly the state it would be in
+without the patch.
+
 > **Careful with a TX→RX loopback cable.** The receiver is the fragile end: the
 > AD9361's RX input is rated to roughly **+2.5 dBm**, while its transmitter can
 > reach about **+7 dBm** at 0 dB attenuation. Connect the cable with TX
@@ -839,6 +845,16 @@ the factory firmware.
 > and raise the power in steps.
 
 ## Troubleshooting
+
+- **SDRangel lists the board as `PlutoSDR0 TBD` and won't open it** (`open
+  serial TBD failed` in its log). SDRangel identifies Plutos by serial number,
+  and firmware built before patch 0001 gained its serial fallback reported an
+  empty one — this board's W25Q128 flash never emits the `SPI-NOR-UniqueID`
+  line the boot script looks for. Rebuild with the current `patches/` and
+  reflash; the board mints a persistent serial on first boot, and your network
+  interface name and MAC do not change. If SDRangel is a snap, also
+  `sudo snap connect sdrangel:raw-usb` — without it the Pluto scan fails
+  before it ever reads a serial.
 
 - **`vivado`/`xsct`/`bootgen` fail to start, or complain about missing
   shared libraries** — you sourced Vivado's own `settings64.sh` instead

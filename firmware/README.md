@@ -52,6 +52,22 @@ Firmware/` dump pulled from a real unit:
   - `buildroot/board/pluto/S23udc`: two hardcoded debug leftovers in the
     upstream repo — `fw_version=v0.38` and a literal fake serial number —
     restored to the dynamic runtime lookups the real firmware actually uses.
+
+    **With one addition, because the dynamic lookup finds nothing on this
+    board.** It greps `dmesg` for `SPI-NOR-UniqueID`, which the ADI kernel
+    prints only for Micron flash; this board carries a Winbond W25Q128, so
+    `hw_serial` came out empty. Anything that identifies a Pluto by serial
+    then cannot open it — SDRangel lists the board as `PlutoSDR0 TBD` and
+    fails with `open serial TBD failed`. The SoC exposes no unique hardware
+    id at all (no device-tree `serial-number`, no DNA, no efuse), so the
+    script now mints 16 random bytes once and keeps them in
+    `/mnt/jffs2/hw_serial`, the board's persistent store.
+
+    The USB gadget MACs are `sha1($serial)`, and a changed MAC renames the
+    host's network interface (`enx<mac>`) and breaks any static-IP setup
+    bound to it. So the MACs are deliberately still seeded from the
+    *original* empty value: interface names and addresses are bit-identical
+    to before, and only `hw_serial` and the USB descriptor string change.
   - `buildroot/configs/zynq_pluto_defconfig`: enables the `iperf` package
     (present on the real board, missing from a stock build) and sets
     `CONFIG_BOOTDELAY=3` to match.
@@ -106,14 +122,24 @@ Firmware/` dump pulled from a real unit:
   unmutes, `postdisable` mutes — and calls `ad9361_tx_mute()`, ADI's own
   exported helper, which was present in the tree but called from nowhere. It
   caches both channels' attenuation and restores it on unmute, so a chosen TX
-  gain survives a stream. The IIO core runs `postdisable` on buffer teardown
+  gain survives a stream. A small exported wrapper, `ad9361_tx_lo_powerdown()`,
+  also stops the TX synthesiser on mute and restarts it on unmute — attenuation
+  is what removes output power, but without this a chain that some application
+  powered up would idle with its oscillator running after that application
+  closed. Order is kept both ways: signal down before oscillator, oscillator up
+  before signal. The IIO core runs `postdisable` on buffer teardown
   even when the application crashed or was killed, which is what makes this a
   guarantee rather than best effort.
 
-  Two details worth knowing. `ad9361_tx_mute()`'s attenuation cache reads zero
-  until the first mute, so an unmute that was never preceded by a mute would
-  set 0 dB attenuation and key the transmitter at full output — hence the
-  `tx_muted` flag and the mute at probe. And the phy is reached through the
+  Two details worth knowing. `ad9361_tx_mute()` restores a *cached*
+  attenuation, and that cache is only trustworthy once a real mute has filled
+  it — so the driver never unmutes something it did not mute (`tx_muted`), and
+  it deliberately does **not** mute at probe: at that point the phy has not yet
+  applied `adi,tx-attenuation-mdB`, the cache would capture the chip's reset
+  value of 89.75 dB, and every later unmute would restore it, leaving the
+  transmitter permanently silent (measured: a running stream sat at −89.75 dB
+  instead of the requested −20). Quieting the board before the first stream is
+  therefore `S21misc`'s job, attenuation only. And the phy is reached through the
   DDS node's existing `clocks` phandle, so **no device tree change is needed**
   and `devicetree.dtb` stays byte-identical.
 
