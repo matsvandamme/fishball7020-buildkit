@@ -1,3 +1,26 @@
+#!/usr/bin/env python3
+"""Redraw docs/img/loop-gain-{light,dark}.svg from measured sweep data.
+
+Input is a JSON file (default /tmp/chartdata.json) of the form
+
+    {"ch0": [[freq_hz, median_db, min_db, max_db], ...], "ch1": [...]}
+
+holding TX->RX loop gain with the external attenuator ADDED BACK, so the curve
+describes the board rather than the cable. Build it from one or more runs:
+
+    ./sdr_selftest.py --loopback --pad 20 --channel 0 \\
+        --sweep-points 60 --sweep-start 70e6 --sweep-stop 6e9 --json run1.json
+
+then take the median/min/max of each frequency's `chN_path_loss_curve` value
+across runs and add the pad. Two or more runs give the band; one gives a line.
+
+Standard library only, matching the rest of this repo. The two series colours
+are slots 1 and 2 of the validated reference palette at agentskills.io - they
+pass the colour-vision and contrast checks as a pair in both light and dark.
+Do not substitute them by eye.
+
+Usage:  python3 make_loop_gain_svg.py [output_dir]
+"""
 import json, math, pathlib, sys
 
 data = json.load(open("/tmp/chartdata.json"))       # {"ch0":[[f,med,lo,hi],...], ...}
