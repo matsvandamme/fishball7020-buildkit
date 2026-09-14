@@ -68,6 +68,12 @@ required either way.
 
 ## What you get
 
+- **Agent Skills** in [`.claude/skills/`](.claude/skills/fishball7020-firmware/SKILL.md) —
+  if you use Claude Code, the workflow rules below (flash via SD only, delete
+  the Vivado project before an HDL change, the PA power budget, check
+  `/mnt/jffs2` first) load automatically when you work in this repo. Written to
+  the [Agent Skills spec](https://agentskills.io/specification); harmless if
+  you don't use an agent.
 - **A firmware build you can trust** — verified against a real unit:
   `devicetree.dtb` comes out byte-for-byte identical, the rootfs and
   bootloader environment content-identical.
@@ -141,6 +147,7 @@ login prompt — no prior knowledge assumed.
 - [The stock block design: IPs, wiring, and what you can change](docs/block-design.md)
 - [Worked example: an FM channelizer in the FPGA](docs/wbfm-channelizer.md)
 - [Transmitter safety](#transmitter-safety) — TX is muted when nothing is being sent
+- [Simulating your HDL first](#simulating-your-hdl-first) — one second instead of twenty minutes
 - [Is the board healthy?](#is-the-board-healthy) — a self-test that measures, cable optional
 - [Controlling the USER LED](docs/user-led.md) — for custom projects
 - [Troubleshooting](#troubleshooting)
@@ -811,6 +818,9 @@ fishball7020-fpga-devkit/
 ├── README.md                            ← you are here: the full build/flash workflow
 ├── LICENSE                              multiple licenses apply — see below
 │
+├── .claude/skills/                      ← Agent Skills: the rules above, loaded automatically
+│   └── fishball7020-firmware/           by Claude Code when you work in this repo
+│
 ├── tools/
 │   ├── env-vivado.sh                    ← source this before any vivado/xsct/bootgen command
 │   ├── selftest/                        ← is the board damaged? measures and says (see below)
@@ -841,6 +851,9 @@ fishball7020-fpga-devkit/
     │   ├── gen_fir_coe.m               the MATLAB equivalent (equiripple; needs the SP Toolbox)
     │   ├── verify_output.sh            checks output/ is complete and reports what's in the bitstream
     │   └── coefile_*.coe               generated coefficients; build_all.sh copies these into src/
+    ├── sim/                            ← simulate the custom HDL in a second, no Vivado needed
+    │   ├── run_sim.sh                  runs it; --mutate proves the testbench can fail
+    │   └── tb_ad_fs4_ddc.v             self-checking testbench against a golden model
     ├── src/                            ← created by setup.sh, NOT committed to git (see .gitignore)
     │   │                                 the actual upstream source tree you'll edit HDL/kernel/etc in:
     │   ├── hdl/projects/pluto/          ← the Vivado project lives here (pluto.xpr, once built)
@@ -946,6 +959,58 @@ without the patch.
 >
 > The non-PA variant is 10–18 dB quieter, but check which one you have before
 > relying on that.
+
+## Simulating your HDL first
+
+A Vivado build is about 20 minutes with `--hdl-only` and 70 from cold, and then
+you still have to flash and reboot. Synthesis also cannot tell you the logic is
+*wrong* — only that it fits and meets timing. So check the logic first:
+
+```bash
+# run from: firmware/
+./sim/run_sim.sh
+```
+
+Needs only `iverilog` (`sudo apt install iverilog`), takes about a second, and
+checks the repo's custom HDL against a golden model of what it is supposed to
+compute. It works whether or not you have applied the channelizer patch — if
+`ad_fs4_ddc.v` is not in `src/`, the runner lifts it straight out of the patch
+file.
+
+```
+== ad_fs4_ddc ==
+   [1] 200 random samples, valid every clock
+   [2] 200 random samples with random 0-3 clock gaps
+   [3] a tone at +Fs/4 becomes DC (with gaps, so it is a real test)
+   [4] DC in comes out rotating through the four quadrants
+   [5] outputs hold their value while valid_in is low
+   [6] the endpoints of the documented input range
+   PASS  473 checks, no mismatches against the golden model
+```
+
+Every check is exact integer arithmetic — an Fs/4 shift is a swap and a sign
+flip, so there is no rounding and no tolerance to argue about.
+
+**Test [2] is the one that earns its keep.** The phase counter must advance
+once per *sample*, not once per *clock*, and on this board `valid` is genuinely
+intermittent — in 2R2T mode the AD9361 asserts `adc_valid` every second clock.
+Moving that counter outside its `if (valid_in)` guard looks correct in a
+back-to-back simulation, synthesises cleanly, meets timing, and puts the
+channel at the wrong frequency on hardware.
+
+A green test suite means nothing until you have watched it go red, so the
+runner can check itself:
+
+```bash
+./sim/run_sim.sh --mutate
+```
+
+It breaks the module four ways — the phase counter moved out of its guard, a
+sign error in the −j quadrant, I and Q swapped in +j, `valid_out` unregistered
+— and reports any mutant the testbench fails to catch. CI runs both.
+
+If you add HDL of your own, add a testbench beside this one. It is the
+cheapest verification available here by a factor of about a thousand.
 
 ## Is the board healthy?
 

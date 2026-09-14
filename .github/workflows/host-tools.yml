@@ -53,3 +53,18 @@ jobs:
 
       - name: FIR coefficient generator still designs a filter it stands behind
         run: python firmware/scripts/gen_fir_coe.py
+
+  hdl-sim:
+    # Simulating the custom HDL needs only Icarus Verilog, so unlike synthesis
+    # it runs perfectly well on a hosted runner - and it catches the class of
+    # mistake synthesis cannot: logic that builds and meets timing but computes
+    # the wrong thing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Icarus Verilog
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq iverilog
+      - name: Simulate against the golden model
+        run: cd firmware && ./sim/run_sim.sh
+      - name: Prove the testbench can still fail
+        run: cd firmware && ./sim/run_sim.sh --mutate
