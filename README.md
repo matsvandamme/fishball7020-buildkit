@@ -28,6 +28,29 @@ OpenSourceSDRLab.
 > (XC7Z010) — use different pin constraints and won't work with the HDL
 > project or device tree built here without changes.
 
+> **The same board goes by several names.** All of these refer to the hardware
+> this devkit targets — an XC7Z020-CLG400 + AD9361, 2×2, four SMAs:
+>
+> | Name | Where you'll see it |
+> |---|---|
+> | **7020-SDR** | the AliExpress listing title |
+> | **PlutoSky**, **PlutoSky R1** | OpenSourceSDRLab's [shop write-up](https://blog.opensourcesdrlab.com/archives/PlutoSky-R1) |
+> | **PlutoSky_7020_AD936X_SDR**, "AD9361/AD9363 Development Board" | OpenSourceSDRLab's [GitHub repo](https://github.com/OpenSourceSDRLab/PlutoSky_7020_AD936X_SDR) |
+> | **FISH Ball PlutoSDR Rev.A (Z7020-AD9361)** | what the board itself reports as `hw_model` |
+> | **Fish-Wan** | the upstream firmware fork this devkit builds from |
+> | **Fishball7020** | this repository |
+>
+> Names on listings drift; the board's own report doesn't. **The definitive
+> check** — from any machine with `libiio-utils`, no login needed:
+>
+> ```bash
+> iio_attr -S
+> #  1: 192.168.2.1 (FISH Ball PlutoSDR Rev.A (Z7020-AD9361)), serial=... [ip:pluto.local]
+> ```
+>
+> If yours says `FISH Ball PlutoSDR Rev.A (Z7020-AD9361)`, this devkit fits.
+> If it says `Z7010` or `AD9363`, or a different Rev, it does not.
+
 This repo takes you from a stock, unmodified board all the way to **your own
 FPGA logic running inside it**: install Vivado, open the real block design,
 add your HDL next to the AD9361 datapath, rebuild every layer of the
@@ -115,6 +138,7 @@ login prompt — no prior knowledge assumed.
   [7. Verify](#7-verify-your-build-is-actually-running)
 - [Repository layout](#repository-layout)
 - [How it works](docs/how-it-works.md) — the boot chain explained from scratch
+- [The stock block design: IPs, wiring, and what you can change](docs/block-design.md)
 - [Worked example: an FM channelizer in the FPGA](docs/wbfm-channelizer.md)
 - [Transmitter safety](#transmitter-safety) — TX is muted when nothing is being sent
 - [Controlling the USER LED](docs/user-led.md) — for custom projects
@@ -278,6 +302,10 @@ what each patch does and why). `src/` is gitignored and only exists on
 your machine; re-run `setup.sh` any time you want a clean slate.
 
 ## 3. Open the block diagram
+
+> Want to know what you're looking at before you open it? **[The stock block
+> design](docs/block-design.md)** walks through every IP block, how they're wired,
+> the clock domains, the address map, and which parts are safe to change.
 
 ```bash
 # run from: firmware/
