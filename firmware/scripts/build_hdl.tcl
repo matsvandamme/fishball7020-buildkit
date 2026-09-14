@@ -36,6 +36,11 @@ if {$proj_exists} {
         set fh [open $compress_hook w]
         puts $fh {set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]}
         close $fh
+        # Register the hook in utils_1 as well. Vivado runs it either way, but
+        # warns (Runs 36-537) and leaves it out of project archives otherwise.
+        if {[lsearch -exact [get_files -quiet -of_objects [get_filesets utils_1]] $compress_hook] < 0} {
+            add_files -fileset utils_1 -norecurse $compress_hook
+        }
         set_property STEPS.WRITE_BITSTREAM.TCL.PRE $compress_hook [get_runs impl_1]
     }
 
