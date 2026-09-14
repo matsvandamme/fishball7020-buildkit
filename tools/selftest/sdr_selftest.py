@@ -1277,22 +1277,34 @@ def test_board_scripts(rep, sh):
         rep.add(g, "no autorun.sh on the persistent partition", INFO,
                 f"/mnt/jffs2 holds: {', '.join(files) if files else 'nothing'}")
         return
-    body = "\n           ".join(l for l in autorun.splitlines()
-                                if l.strip() and not l.strip().startswith("#"))
-    rep.add(g, "/mnt/jffs2/autorun.sh runs at every boot", INFO,
-            f"{body}\n           This partition is persistent: nothing here is "
-            f"part of the firmware, and reflashing will not change it.")
+    active = [l for l in autorun.splitlines()
+              if l.strip() and not l.strip().startswith("#")]
+    if active:
+        rep.add(g, "/mnt/jffs2/autorun.sh runs at every boot", INFO,
+                "\n           ".join(active)
+                + "\n           This partition is persistent: nothing here is "
+                  "part of the firmware, and reflashing will not change it.")
+    else:
+        rep.add(g, "/mnt/jffs2/autorun.sh starts nothing", INFO,
+                "the file exists but every line is commented out, so nothing "
+                "it references is running")
     try:
         writers = sh.run("grep -rlE 'hardwaregain|iio_attr|iio_wr' /mnt/jffs2 "
                          "2>/dev/null || true").split()
     except Exception:
         writers = []
-    if writers:
+    writers = [w for w in writers if not w.endswith("autorun.sh")]
+    if writers and active:
         rep.add(g, "scripts here write radio settings", WARN,
                 f"{', '.join(writers)}\n           These can change gain or "
                 f"attenuation underneath any application, including this one. "
                 f"If a measurement below reports the settings moving on their "
                 f"own, this is where to look first.")
+    elif writers:
+        rep.add(g, "scripts here write radio settings, but are not started", INFO,
+                f"{', '.join(writers)}\n           autorun.sh does not run "
+                f"them, so they are dormant. Re-enabling one would let it "
+                f"change gain underneath any application.")
 
 
 def test_digital_interface(b, rep, sh):

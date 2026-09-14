@@ -1167,48 +1167,49 @@ leftovers) found and fixed along the way.
 
 The claim this repo has to earn is narrow and testable: *a fresh clone, an
 edit, and a rebuild produce firmware whose FPGA actually contains the edit.*
-That was run as a two-phase test on 14 September 2026, against real hardware,
-flashing via the SD partition only.
+It is re-run before every release, from a genuinely clean clone, and flashed
+via the SD partition to a real board.
 
-**Phase A — a clean clone must reproduce stock.** `git clone`, `setup.sh`,
-then a cold full build with no Vivado project to reuse.
+**A clean clone reproduces stock.** `git clone`, `setup.sh`, then a cold full
+build with nothing cached.
 
 | | |
 |---|---|
-| Patches applied | 0001, 0002, 0004 — `optional/0003` skipped, with a message saying so |
+| Patches applied | 0001, 0002, 0004, 0005 — `optional/0003` skipped, with a message saying so |
+| Buildroot auto-repair | `SUCCESS on iteration 1`, both passes — no repairs needed |
 | Output | the 5 SD-card files, nothing else |
-| `devicetree.dtb` | byte-identical to the reference build |
-| RX path | no `rx_ddc`, stock `coefile_int.coe`, **72 / 220 DSP48s** |
-| BOOT.bin | 2 849 940 B, bitstream compressed |
-| Timing | 0 failing endpoints |
-| On the board | correct `hw_model`, persistent serial, TX attenuated at boot, LO spur at **+0 kHz** |
+| `devicetree.dtb` | byte-for-byte identical to the factory board's |
+| RX path | no `rx_ddc`, stock `coefile_int.coe`, **72 / 220 DSP48s**, 11 893 LUTs |
+| BOOT.bin | 2 849 940 B, bitstream compressed to 2 329 140 B |
+| Timing | WNS +0.214 ns, 0 failing endpoints of 48 248 |
+| HDL simulation | 473 checks against the golden model, all 4 mutants caught |
+| On the board | correct `hw_model`, persistent serial, TX muted at boot, 32 self-test checks passed |
 
-**Phase B — an HDL change must reach the fabric.** The same tree, with
-`optional/0003-wbfm-channelizer.patch` applied, the Vivado project deleted,
-and `build_all.sh --hdl-only` re-run.
+**An HDL change reaches the fabric.** The same tree with
+`optional/0003-wbfm-channelizer.patch` applied, the Vivado project deleted, and
+`build_all.sh --hdl-only` re-run.
 
 | | |
 |---|---|
 | RX path | `rx_ddc` wired, `coefile_wbfm_102100.coe`, **96 / 220 DSP48s** |
-| BOOT.bin | 2 626 580 B — a different bitstream, still compressed |
+| BOOT.bin | a different bitstream, still compressed |
 | Timing | WNS +0.292 ns, 0 failing endpoints of 55 269 |
-| On the board | LO spur moved to **−1000 kHz** |
+| On the board | LO spur moved from **+0 kHz** to **−1000 kHz** |
 
 That last row is the whole test in one number. The AD9361's LO leakage and DC
 offset land at exactly 0 Hz and cannot be moved by anything in software — so a
 spur that has moved to −1 MHz can only have been moved by logic running in the
-FPGA. It is the Fs/4 shifter, in the fabric, doing its job.
+FPGA. Engaging the ÷8 filter confirms the rest of the datapath: an out-of-band
+signal 37.8 dB over the floor vanishes, and capture RMS drops from −49.2 to
+−78.6 dBFS.
 
-Engaging the ÷8 filter on that build confirms the rest of the datapath:
-
-| | Filter bypassed | Filter engaged |
-|---|---|---|
-| Out-of-band signal at −724 kHz | −66.5 dBFS, 37.8 dB over the floor | gone |
-| Capture RMS | −49.2 dBFS | −78.6 dBFS |
-
-The board was then reflashed back to the stock build and re-verified — spur
-back at +0 kHz. `firmware/scripts/verify_output.sh` is the build-side half of
-this test, kept in the repo so you can run it on your own builds.
+**This is not ceremony.** The v1.1 run found three real defects in the build's
+own self-repair path, every one of which would have stopped the next person
+building from a clean clone: it patched the alphabetically-first of the 1120
+packages containing a `COPYING` rather than the one that failed; it recorded
+the hash of a zero-byte download as if it were valid, disabling the check that
+caught the corruption; and it cleared `dl/` without clearing the stamps that
+stop buildroot re-fetching. None of them were visible by reading the code.
 
 ## Vendor resources
 
