@@ -866,10 +866,11 @@ nothing in the DAC DMA, no DDS tone, and nobody having asked to transmit. When
 a transmission ends, ADI's driver reverts the baseband source to a silent DDS
 but leaves the chain biased, so it goes straight back to idling hot.
 
-That is not a damage risk on its own: the AD9361's own output tops out near
-+7 dBm with no external PA, and its outputs tolerate an open or short. But
-there is no reason to keep a transmitter energised that you are not using, and
-it warms a die that already sits above 50 °C.
+Into an open or shorted port that is not a damage risk — the AD9361's outputs
+tolerate both. But there is no reason to keep a transmitter energised that you
+are not using, it warms a die that already sits above 50 °C, and on the **PA
+variant of this board it is not a trivial amount of power**: see the loopback
+warning below.
 
 **This build fixes it in firmware.** `patches/0004-mute-tx-when-no-dma-stream.patch`
 hooks the TX buffer lifecycle the DAC driver already has:
@@ -900,11 +901,31 @@ including 0 dB, and received level tracked commanded gain across 40 dB within
 1.9 dB. While a stream runs, the chip is in exactly the state it would be in
 without the patch.
 
-> **Careful with a TX→RX loopback cable.** The receiver is the fragile end: the
-> AD9361's RX input is rated to roughly **+2.5 dBm**, while its transmitter can
-> reach about **+7 dBm** at 0 dB attenuation. Connect the cable with TX
-> attenuation at maximum, fit an inline 20–30 dB attenuator if you have one,
-> and raise the power in steps.
+> ### A TX→RX loopback without an attenuator will destroy your receiver
+>
+> The receiver is the fragile end — the AD9361's RX input is rated to roughly
+> **+2.5 dBm** — and **this board is sold in a variant with a power amplifier
+> on transmit**, which most Pluto advice does not account for.
+>
+> The PA is a Mini-Circuits [**PGA-102+**](https://www.minicircuits.com/pdfs/PGA-102+.pdf),
+> and its gain is strongly frequency dependent:
+>
+> | GHz | 0.05 | 0.8 | 2.0 | 3.0 | 4.0 | 6.0 |
+> |---|---|---|---|---|---|---|
+> | **Gain (dB)** | **17.7** | 15.9 | 14.0 | 12.5 | 11.5 | 10.4 |
+>
+> with P1dB around **+17.5 dBm**. Measured on a PA-equipped unit at 900 MHz
+> through a 50 dB pad, flat out it delivers about **+18.5 dBm** — roughly
+> **16 dB above what its own receive port survives**.
+>
+> So: **fit at least 20 dB of attenuation** in any loopback; 40–50 dB is
+> comfortable and still leaves 60 dB of signal-to-noise. Start with TX
+> attenuation at maximum and raise power in steps. `tools/selftest/` does all
+> of this for you and never transmits with less than 35 dB of its own
+> attenuation — see [Is the board healthy?](#is-the-board-healthy).
+>
+> The non-PA variant is 10–18 dB quieter, but check which one you have before
+> relying on that.
 
 ## Is the board healthy?
 
@@ -914,8 +935,9 @@ measurements rather than with "well, it still enumerates".
 
 ```bash
 cd tools/selftest
-./sdr_selftest.py --ssh                       # no cable, never transmits
-./sdr_selftest.py --ssh --loopback            # + the RF tests
+./sdr_selftest.py --ssh                                   # no cable, never transmits
+./sdr_selftest.py --ssh --loopback --pad 50               # + the RF tests
+./sdr_selftest.py --ssh --loopback --pad 50 --channel both  # both TX/RX pairs
 ```
 
 Python 3.8 and nothing else — `numpy` is used for the FFT if you have it and a
@@ -938,13 +960,18 @@ rejection, 2nd and 3rd harmonic distortion, path loss at eight frequencies from
 one band and nowhere else), and how far the transmitter actually falls when it
 is stopped.
 
-**It cannot overdrive your receiver, even if you forget the attenuator.** The
-AD9361's RX input is rated to about +2.5 dBm and its transmitter reaches about
-+7 dBm, so the script never transmits with less than **20 dB** of its own
-attenuation — about −13 dBm, some 15 dB below the rating with a *bare cable*
-and no pad at all. Sweeps start at 40 dB and only ever work downward toward
-that floor. Nothing transmits at all without `--loopback`, and every setting is
-restored on exit, including after Ctrl-C.
+**It cannot overdrive your receiver, even if you forget the attenuator.** This
+board's PA can put about +18.5 dBm on the transmit port against a receive port
+rated to +2.5 dBm, so the script never transmits with less than **35 dB** of
+its own attenuation — about −16 dBm at the drive level it uses, and −10 dBm
+even at full-scale drive, with a *bare cable* and no pad at all. Sweeps start
+at 50 dB and only ever work downward toward that floor. Nothing transmits at
+all without `--loopback`, and every setting is restored on exit, including
+after Ctrl-C.
+
+It also **asks how much attenuation is in your cable** and then checks that
+answer against what it measures, because a pad that is missing or not making
+contact is the failure that kills receivers.
 
 Path loss depends on your cable and your pad, so there is no universal number
 for it. Record a baseline while the board is known good and compare later:

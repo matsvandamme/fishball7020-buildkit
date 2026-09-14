@@ -180,6 +180,12 @@ class Board:
     def wr(self, dev, ch, attr, value, output=False):
         self.c.write(dev, ch, attr, value, output)
 
+    def rd_dev(self, dev, attr):
+        return self.c.read_device(dev, attr)
+
+    def wr_dev(self, dev, attr, value):
+        self.c.write_device(dev, attr, value)
+
     # state ------------------------------------------------------------------
 
     def save_state(self):
@@ -235,6 +241,21 @@ class Board:
 
     def rate(self):
         return self.rdf(PHY, "voltage0", "sampling_frequency")
+
+    def rx_gain_limits(self, pair=0):
+        """(min, max) manual gain for the CURRENT band, in dB.
+
+        Not a constant: the AD9361 swaps gain tables with frequency, and the
+        range moves with them - [-1, 73] below 1.3 GHz, [-3, 71] to 4 GHz,
+        [-10, 62] above. Writing outside it is rejected with EINVAL, which is
+        how a frequency sweep falls over if it assumes one range everywhere.
+        """
+        try:
+            raw = self.rd(PHY, f"voltage{pair}", "hardwaregain_available")
+            lo, _step, hi = raw.strip("[] ").split()
+            return float(lo), float(hi)
+        except Exception:
+            return -1.0, 62.0                     # the narrowest of the three
 
     def set_rx_gain(self, db, pair=0):
         self.wr(PHY, f"voltage{pair}", "gain_control_mode", "manual")
@@ -313,18 +334,42 @@ class Board:
 # --------------------------------------------------------------------------
 #
 # The only way a loopback can damage this board is RF power into the receive
-# port. The AD9361's RX input is rated to about +2.5 dBm; its transmitter
-# reaches about +7 dBm at 0 dB attenuation. Holding TX attenuation at 20 dB
-# or more caps the output at roughly -13 dBm, which is 15 dB below the RX
-# rating EVEN IF THE ATTENUATOR IS MISSING and the ports are joined by a bare
-# cable. That margin is the reason for this floor, and the reason the sweeps
-# below only ever work downward towards it from 40 dB.
+# port, and the receive port is the fragile end: the AD9361's RX input is
+# rated to about +2.5 dBm.
 #
-# A 30 dB span is ample to prove the gain chain is linear, so there is nothing
-# to gain from going louder. --min-tx-atten can lower it, and says why not to.
+# THIS BOARD HAS A POWER AMPLIFIER, and sizing the limit for a bare AD9361
+# gets it dangerously wrong. The PA is a Mini-Circuits PGA-102+, whose gain is
+# strongly frequency dependent - 17.7 dB at 50 MHz, 15.9 at 800 MHz, 14.0 at
+# 2 GHz, 10.4 at 6 GHz - with P1dB around +17.5 dBm. So at the bottom of the
+# range the transmit port delivers roughly
 #
-MIN_TX_ATTEN_DB = 20.0          # never transmit with less attenuation than this
-START_TX_ATTEN_DB = 40.0        # where every loopback measurement begins
+#     +7 dBm (AD9361 at 0 dB attenuation) + 17.7 dB  ->  PA saturation, ~+17 dBm
+#
+# which is about 15 dB ABOVE what the receiver can survive. A loopback with no
+# attenuator in it will damage this board. That is not true of a stock
+# PlutoSDR, and it is why the floor here is higher than you might expect.
+#
+# Sizing the floor for the worst case - full-scale digital drive, 18 dB of PA
+# gain, no external pad at all - and leaving 12 dB of margin under the +2.5 dBm
+# rating:
+#
+#     7 + 18 - A <= -10 dBm   ->   A >= 35 dB
+#
+# So 35 dB is the floor, and sweeps start at 50 dB and only work downward
+# towards it. At the -6 dBFS this script actually drives, that is about
+# -16 dBm into a bare cable: 18 dB of margin. A 25 dB span is ample to prove
+# the gain chain is linear, so there is nothing to gain from going louder.
+# --min-tx-atten can lower it, and says why not to.
+#
+# The "without PA" variant of this board is 15-18 dB quieter, so this floor is
+# conservative there. Being conservative on the quieter variant is the right
+# way round.
+#
+MIN_TX_ATTEN_DB = 35.0          # never transmit with less attenuation than this
+START_TX_ATTEN_DB = 50.0        # where every loopback measurement begins
+PA_GAIN_DB = 18.0               # PGA-102+ worst case, used only for the budget
+AD9361_TX_MAX_DBM = 7.0         # at 0 dB attenuation, full-scale digital
+RX_MAX_INPUT_DBM = 2.5          # what the receive port survives
 TARGET_RX_DBFS = -22.0          # aim the received tone here: loud, not clipping
 MAX_RX_DBFS = -6.0              # back off if anything gets nearer full scale
 
@@ -553,6 +598,14 @@ class Loop:
         self.rx_gain = 30.0
         self.f_off = fs / 16                          # exact bin of the cyclic buffer
         self.running = False
+        self.gain_lo, self.gain_hi = board.rx_gain_limits(pair)
+        self.drifted = []                             # settings that moved on their own
+
+    def refresh_gain_limits(self):
+        """Call after retuning: the legal gain range moves with the band."""
+        self.gain_lo, self.gain_hi = self.b.rx_gain_limits(self.pair)
+        if not self.gain_lo <= self.rx_gain <= self.gain_hi:
+            self.set_levels(rx_gain=self.rx_gain)     # re-clamp into the new band
 
     # -- transmitter ---------------------------------------------------------
 
@@ -571,17 +624,58 @@ class Loop:
             self.running = False
 
     def set_levels(self, atten=None, rx_gain=None):
+        """Command a level, snapped to the grid the hardware actually uses.
+
+        The AD9361 quantises: attenuation to 0.25 dB, manual gain to whole dB.
+        Snapping here keeps the commanded value equal to the value the chip
+        will report, so the drift check below compares like with like instead
+        of firing on its own rounding.
+
+        The commanded value stays authoritative. An earlier version adopted
+        whatever read back, which is wrong in exactly the case that matters:
+        read the radio while something else has transiently moved it and the
+        bad value becomes the new target, and the test then chases it.
+        """
         if atten is not None:
-            self.atten = min(60.0, max(self.min_atten, atten))
+            self.atten = round(min(60.0, max(self.min_atten, atten)) * 4) / 4
             self.b.set_tx_atten(-self.atten, self.pair)
         if rx_gain is not None:
-            self.rx_gain = min(70.0, max(0.0, rx_gain))
+            self.rx_gain = float(round(min(self.gain_hi,
+                                           max(self.gain_lo, rx_gain))))
             self.b.set_rx_gain(self.rx_gain, self.pair)
+        time.sleep(0.05)
+
+    def reassert(self):
+        """Put the commanded levels back, whatever the radio currently thinks."""
+        self.b.set_tx_atten(-self.atten, self.pair)
+        self.b.set_rx_gain(self.rx_gain, self.pair)
         time.sleep(0.05)
 
     # -- measurement ---------------------------------------------------------
 
-    def measure(self, n=16384):
+    def measure(self, n=16384, verify=True):
+        """Capture and find the tone, checking the radio is still where we put it.
+
+        The read-back is not paranoia. During development the received level
+        jumped by ~48 dB twice, mid-sweep, with no command issued to cause it,
+        and the cause was never pinned down - gain mode, gain, attenuation and
+        the driver's mute paths all checked out afterwards. Rather than trust
+        that it cannot happen, every measurement confirms the settings still
+        read back as commanded, re-asserts them if not, and counts it. If the
+        count is non-zero the report says so, which turns an invisible source
+        of wrong numbers into a visible one.
+        """
+        if verify:
+            try:
+                atten = -self.b.rdf(PHY, f"voltage{self.pair}", "hardwaregain", True)
+                gain = self.b.rdf(PHY, f"voltage{self.pair}", "hardwaregain")
+                if abs(atten - self.atten) > 0.3 or abs(gain - self.rx_gain) > 0.3:
+                    self.drifted.append(
+                        f"TX attenuation {atten:.2f} dB (set {self.atten:.2f}), "
+                        f"RX gain {gain:.2f} dB (set {self.rx_gain:.2f})")
+                    self.reassert()
+            except Exception:
+                pass
         spec = Spectrum(self.b.capture(n, self.pair))
         return spec, spec.peak_near(self.f_off, self.fs)
 
@@ -613,18 +707,81 @@ class Loop:
     def system_gain(self, level):
         return _system_gain(level, self.atten, self.rx_gain)
 
+    def set_operating_point(self, sysg, rx_gain=46.0, target=TARGET_RX_DBFS):
+        """Move to a DEFINED gain/attenuation pair, not wherever we landed.
 
-def test_loopback(b, rep, args):
-    g = "RF loopback"
+        Autoranging ends somewhere different every run, and measurements like
+        image rejection depend on where it ended: the AD9361's IQ balance is
+        not the same above and below the gain table's LNA transition at 52 dB.
+        Measured at 66 dB one run and 36 dB the next, image rejection appeared
+        to move 15 dB when nothing had changed. Pinning the operating point
+        inside the transition-free window makes the number mean something,
+        and makes it comparable with a baseline taken months earlier.
+
+        Returns False if the level cannot be reached from here.
+        """
+        rx_gain = min(self.gain_hi, max(self.gain_lo, rx_gain))
+        want = sysg + TX_DIGITAL_DBFS + rx_gain - target
+        atten = min(60.0, max(self.min_atten, want))
+        self.set_levels(atten=atten, rx_gain=rx_gain)
+        return abs(atten - want) < 6.0
+
+
+def ask_pad_db(args):
+    """How much attenuation is in the loop? Get it from the user, not a guess.
+
+    This is not bureaucracy. Knowing the pad is what lets the script turn a
+    received level into an absolute transmit power in dBm, and what lets it
+    tell you that the loop does not contain the attenuation you think it does
+    - which is the failure that destroys receivers.
+    """
+    if args.pad is not None:
+        return args.pad
+    if not sys.stdin.isatty():
+        raise SystemExit(
+            "--loopback needs to know how much attenuation is in the cable.\n"
+            "Pass --pad DB (for example --pad 50 for a 20 dB and a 30 dB pad in\n"
+            "series, or --pad 0 for a bare cable - which this board's PA can\n"
+            "damage the receiver with, so fit one).")
+    print("This board has a PGA-102+ power amplifier on transmit: up to about")
+    print("+17 dBm, against a receive port rated to +2.5 dBm. A loopback with")
+    print("no attenuator in it can damage the receiver.\n")
+    while True:
+        raw = input("How much attenuation is in the loop, in dB? "
+                    "(e.g. 50 for 20+30 in series) ").strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            print("  a number, please")
+            continue
+        if value < 0:
+            print("  attenuation is not negative")
+            continue
+        if value < 15:
+            print(f"  {value:g} dB is thin for this board. The script stays "
+                  f"below -16 dBm so it will not hurt anything itself, but "
+                  f"fit at least 20 dB.")
+        return value
+
+
+def test_loopback(b, rep, args, pair=0):
+    g = f"RF loopback, channel {pair}"
     fs = SWEEP_FS
     centre = args.centre
+
+    if b.dev[RX][1] < (pair + 1) * 2:
+        rep.add(g, "channel available", WARN,
+                f"the capture device has only {b.dev[RX][1]} scan channels, so "
+                f"pair {pair} does not exist in this bitstream")
+        return
+
     b.set_rate(fs)
     b.tune(centre)
     b.tune(centre, tx=True)
     b.wr(PHY, TX_LO, "powerdown", 0, True)
-    b.set_rx_gain(30)
+    b.set_rx_gain(30, pair)
 
-    loop = Loop(b, fs, args.channel, args.min_tx_atten)
+    loop = Loop(b, fs, pair, args.min_tx_atten)
     loop.start()
     spec, level = loop.autorange()
     floor = spec.floor()
@@ -637,51 +794,109 @@ def test_loopback(b, rep, args):
                   f"{loop.f_off/1e3:.0f} kHz with {loop.atten:.0f} dB of TX "
                   f"attenuation and {loop.rx_gain:.0f} dB of RX gain, and saw "
                   f"only {snr:.1f} dB above the noise floor.\n"
-                  f"           Check the cable is between TX1 and RX1 (not RX2), "
-                  f"that the pad is not more than about 50 dB, and that both "
-                  f"connectors are tight.")
+                  f"           Check the cable runs from TX{pair+1} to "
+                  f"RX{pair+1}, that the pad is not more than about 60 dB, and "
+                  f"that both connectors are tight.")
         return
 
     sysg = loop.system_gain(level)
-    pad = _implied_pad_db(sysg)
+    pad_measured = _implied_pad_db(sysg)
     rep.check(g, "loopback detected", True,
               f"tone {snr:.1f} dB above the floor at {centre/1e6:.1f} MHz; "
               f"TX attenuation {loop.atten:.0f} dB, RX gain {loop.rx_gain:.0f} dB")
-    rep.add(g, "external attenuation in the loop", INFO,
-            f"about {pad:.0f} dB (+/-3 dB). System gain {sysg:.1f} dB.",
-            value=round(sysg, 2), key="system_gain_db")
-    rep.data["implied_pad_db"] = round(pad, 1)
+    rep.add(g, "loop attenuation", INFO,
+            f"measures about {pad_measured:.0f} dB (+/-3 dB); you said "
+            f"{args.pad:.0f} dB. System gain {sysg:.1f} dB.",
+            value=round(sysg, 2), key=f"ch{pair}_system_gain_db")
+    rep.data[f"ch{pair}_implied_pad_db"] = round(pad_measured, 1)
 
-    if pad < 0:
-        rep.add(g, "attenuator check", WARN,
-                f"the loop shows {-pad:.0f} dB MORE gain than a passive cable "
-                f"can explain. Either something in the path is amplifying, or "
-                f"this is not an RF loop at all - the AD9361's internal digital "
-                f"loopback looks exactly like this. Check "
-                f"/sys/kernel/debug/iio/iio:device0/loopback reads 0.")
-    elif pad < 12:
-        rep.add(g, "attenuator check", WARN,
-                f"only about {pad:.0f} dB of external attenuation. This script "
-                f"stays below -13 dBm so nothing is at risk, but fit at least "
-                f"20 dB before driving this loop with anything else.")
+    # Does the loop contain what the user believes it contains? Getting this
+    # wrong is the mistake that kills receivers, so it is worth saying out loud
+    # rather than leaving in a number nobody reads.
+    disagreement = pad_measured - args.pad
+    rep.check(g, "the loop contains the attenuation you declared",
+              abs(disagreement) <= 8,
+              f"declared {args.pad:.0f} dB, measured {pad_measured:.0f} dB "
+              f"({disagreement:+.0f} dB). More than about 8 dB apart usually "
+              f"means a pad is missing, is a different value, or a connector "
+              f"is not making.", warn=abs(disagreement) <= 15)
 
     # -- image rejection ----------------------------------------------------
+    # From here on, measure at a fixed operating point rather than wherever
+    # autoranging stopped, so these numbers are repeatable and comparable.
+    if loop.set_operating_point(sysg):
+        spec, level = loop.measure()
+    else:
+        rep.add(g, "operating point", INFO,
+                f"could not reach {TARGET_RX_DBFS:.0f} dBFS at 46 dB RX gain "
+                f"within the {loop.min_atten:.0f}-60 dB attenuation range; "
+                f"measuring at {loop.atten:.0f} dB / {loop.rx_gain:.0f} dB "
+                f"instead, so these figures are less comparable than usual.")
+        spec, level = loop.measure()
+    rep.add(g, "measured at", INFO,
+            f"{level:.1f} dBFS with {loop.atten:.0f} dB TX attenuation and "
+            f"{loop.rx_gain:.0f} dB RX gain")
+
+    # A long transform for the spur measurements. The image and the harmonics
+    # can sit close to the noise, and the floor per BIN drops 3 dB every time
+    # the transform doubles - 131072 points buys about 9 dB over the 16384 used
+    # elsewhere. Without it, a spur below the floor reads as "the floor" and
+    # the result is a measurement of the noise, quietly reported as distortion.
+    spec, level = loop.measure(131072)
+    floor = spec.floor()
+    usable = level - (floor + 6.0)          # best ratio this capture can resolve
+
+    # Measure as found, then again after forcing a TX quadrature calibration.
+    # The AD9361 calibrates quadrature when the LO moves, but the result goes
+    # stale, and on this board the as-found figure sits around 35 dBc while the
+    # same hardware manages about 54 dBc immediately after a fresh calibration.
+    # Failing on the stale number would condemn a perfectly good transmitter,
+    # so the check is against what the hardware CAN do; the as-found value is
+    # reported next to it, because a large gap is itself worth knowing.
+    imr_found = level - spec.peak_near(-loop.f_off, fs)
+    try:
+        b.wr_dev(PHY, "calib_mode", "tx_quad")
+        time.sleep(0.8)
+        b.wr_dev(PHY, "calib_mode", "auto")
+        loop.reassert()
+        spec, level = loop.measure(131072)
+        floor = spec.floor()
+        usable = level - (floor + 6.0)
+    except Exception as exc:
+        rep.add(g, "TX quadrature calibration", INFO, f"could not run: {exc}")
+
     image = spec.peak_near(-loop.f_off, fs)
-    imr = _cap(level - image)
-    rep.check(g, "image rejection", imr > 35,
-              f"{imr:.1f} dBc (image at {-loop.f_off/1e3:.0f} kHz is "
-              f"{image:.1f} dBFS). Below ~35 dBc points at the quadrature "
-              f"calibration or an unbalanced mixer.",
-              warn=imr > 25, value=round(imr, 1), key="image_rejection_dbc")
+    imr = level - image
+    rep.add(g, "image rejection before recalibrating", INFO,
+            f"{imr_found:.1f} dBc as found, {imr:.1f} dBc after a fresh "
+            f"TX quadrature calibration",
+            value=round(imr_found, 1), key=f"ch{pair}_image_rejection_asfound_dbc")
+    if image < floor + 6.0:
+        rep.check(g, "image rejection", usable > 35,
+                  f"better than {usable:.1f} dBc - the image is below the "
+                  f"noise floor of this capture ({floor:.1f} dBFS), so this is "
+                  f"a bound, not a reading.",
+                  value=round(usable, 1), key=f"ch{pair}_image_rejection_dbc")
+    else:
+        rep.check(g, "image rejection", imr > 35,
+                  f"{imr:.1f} dBc (image at {-loop.f_off/1e3:.0f} kHz is "
+                  f"{image:.1f} dBFS, floor {floor:.1f}). Below ~35 dBc points "
+                  f"at the quadrature calibration or an unbalanced mixer.",
+                  warn=imr > 25, value=round(imr, 1),
+                  key=f"ch{pair}_image_rejection_dbc")
 
     # -- harmonic distortion ------------------------------------------------
-    h2 = max(spec.peak_near(2 * loop.f_off, fs) - level, -DB_DISPLAY_CAP)
-    h3 = max(spec.peak_near(3 * loop.f_off, fs) - level, -DB_DISPLAY_CAP)
+    h2 = spec.peak_near(2 * loop.f_off, fs) - level
+    h3 = spec.peak_near(3 * loop.f_off, fs) - level
     worst = max(h2, h3)
-    rep.check(g, "harmonic distortion", worst < -40,
-              f"2nd {h2:.1f} dBc, 3rd {h3:.1f} dBc at {level:.1f} dBFS",
+    buried = spec.peak_near(2 * loop.f_off, fs) < floor + 6.0 and \
+             spec.peak_near(3 * loop.f_off, fs) < floor + 6.0
+    rep.check(g, "harmonic distortion", worst < -40 or buried,
+              (f"both below the noise floor of this capture, so better than "
+               f"{-usable:.1f} dBc" if buried else
+               f"2nd {h2:.1f} dBc, 3rd {h3:.1f} dBc at {level:.1f} dBFS"),
               warn=worst < -30, value={"h2": round(h2, 1), "h3": round(h3, 1)},
-              key="harmonics_dbc")
+              key=f"ch{pair}_harmonics_dbc")
 
     # -- TX attenuator linearity --------------------------------------------
     # Sweep quieter only - never towards full output - and check the received
@@ -696,8 +911,6 @@ def test_loopback(b, rep, args):
     loop.set_levels(atten=base_atten)
     span = pts[-1][0] - pts[0][0] if len(pts) > 1 else 0.0
     if span < 10:
-        # Every step clamped, so there is nothing to fit. Say that rather than
-        # report a slope of zero as if the attenuator were broken.
         rep.add(g, "TX attenuator is linear", WARN,
                 f"could not vary TX attenuation over more than {span:.0f} dB "
                 f"(sitting at {base_atten:.0f} dB against the "
@@ -710,38 +923,94 @@ def test_loopback(b, rep, args):
                   f"{slope:.3f} dB per dB over {span:.0f} dB "
                   f"(worst deviation {dev:.2f} dB); ideal is 1.000",
                   value={"slope": round(slope, 4), "max_dev_db": round(dev, 2)},
-                  key="tx_atten_linearity")
+                  key=f"ch{pair}_tx_atten_linearity")
 
-    # -- RX gain linearity ---------------------------------------------------
-    pts = []
-    for gain in [base_gain + d for d in (-20, -10, 0, 10, 20)]:
-        if not 0 <= gain <= 70:
+    # -- RX gain: does it respond, and is it linear where it can be? --------
+    #
+    # Two separate questions, because the obvious single test gives the wrong
+    # answer. The AD9361's gain "table" is a ladder the driver labels one dB
+    # per index, but the labels are nominal: at several indices the LNA/mixer
+    # word changes and the real gain takes a step the label does not admit to.
+    # Reading the driver's own tables, those transitions sit at commanded 5,
+    # 17, 27, roughly 31-37, 52, and every step above 63 - in all three bands.
+    # Measured here, the one at 52 is worth about 10 dB. Fit a straight line
+    # across them and a perfectly healthy front end reports 0.67 dB per dB.
+    #
+    # So: check the RANGE across the whole sweep, which is what a dead gain
+    # chain loses, and check the SLOPE only inside 38-51 dB, the widest window
+    # with no transition in it in any band.
+    lo, hi = loop.gain_lo, loop.gain_hi
+    want_atten = sysg + TX_DIGITAL_DBFS + min(hi, 60.0) - TARGET_RX_DBFS
+    loop.set_levels(atten=min(60.0, max(loop.min_atten, want_atten)))
+
+    coarse = []
+    for gain in (10.0, 20.0, 30.0, 40.0, 50.0, 60.0):
+        if not lo <= gain <= hi:
             continue
         loop.set_levels(rx_gain=gain)
         lv = loop.measure(8192)[1]
-        if lv > MAX_RX_DBFS:                          # keep out of compression
+        if lv > MAX_RX_DBFS:
             continue
-        if pts and loop.rx_gain == pts[-1][0]:        # clamped against a limit
+        coarse.append((loop.rx_gain, lv))
+    if len(coarse) >= 3:
+        delivered = coarse[-1][1] - coarse[0][1]
+        commanded = coarse[-1][0] - coarse[0][0]
+        worst_back = min((y[1] - x[1] for x, y in zip(coarse, coarse[1:])),
+                         default=0.0)
+        rep.check(g, "RX gain responds across its range",
+                  delivered > 0.55 * commanded and worst_back > -12.0,
+                  f"{delivered:.1f} dB delivered for {commanded:.0f} dB "
+                  f"commanded ({delivered/commanded:.2f} dB per dB overall); "
+                  f"largest backward step {worst_back:+.1f} dB at a gain-table "
+                  f"transition. Both are normal for this chip.",
+                  value=round(delivered, 1), key=f"ch{pair}_rx_gain_range_db")
+
+    fine = []
+    for gain in (38.0, 42.0, 46.0, 50.0):
+        if not lo <= gain <= hi:
             continue
-        pts.append((loop.rx_gain, lv))
-    loop.set_levels(rx_gain=base_gain)
-    span = pts[-1][0] - pts[0][0] if len(pts) > 1 else 0.0
-    if len(pts) >= 3 and span >= 15:
-        slope, dev = _fit_slope([gn for gn, _ in pts], [v for _, v in pts])
-        rep.check(g, "RX gain is linear", 0.90 <= slope <= 1.10 and dev < 2.0,
-                  f"{slope:.3f} dB per dB over {span:.0f} dB "
+        loop.set_levels(rx_gain=gain)
+        lv = loop.measure(8192)[1]
+        if lv > MAX_RX_DBFS:
+            continue
+        fine.append((loop.rx_gain, lv))
+    tx_power_point = fine[len(fine) // 2] if fine else None
+    if len(fine) >= 3:
+        slope, dev = _fit_slope([gn for gn, _ in fine], [v for _, v in fine])
+        rep.check(g, "RX gain is linear where the table is honest",
+                  0.90 <= slope <= 1.10 and dev < 1.5,
+                  f"{slope:.3f} dB per dB over "
+                  f"{fine[-1][0]-fine[0][0]:.0f} dB in the 38-51 dB window "
                   f"(worst deviation {dev:.2f} dB)",
                   value={"slope": round(slope, 4), "max_dev_db": round(dev, 2)},
-                  key="rx_gain_linearity")
+                  key=f"ch{pair}_rx_gain_linearity")
     else:
-        rep.add(g, "RX gain is linear", WARN,
-                f"only {span:.0f} dB of usable RX gain range at this signal "
-                f"level, so linearity was not measured.")
+        rep.add(g, "RX gain is linear where the table is honest", WARN,
+                f"only {len(fine)} usable points in the 38-51 dB window at "
+                f"this signal level, so linearity was not measured.")
+
+    # Absolute transmit power, now that the pad is known. Receive full scale is
+    # about +2.5 dBm at 0 dB gain and moves one for one with gain - but ONLY
+    # where the gain table is honest, which is why this uses a point from the
+    # window above rather than wherever autoranging happened to land. Treat it
+    # as +/-3 dB: it inherits the accuracy of that calibration point.
+    if tx_power_point:
+        gain_pt, level_pt = tx_power_point
+        p_rx_dbm = level_pt + RX_MAX_INPUT_DBM - gain_pt
+        p_tx_dbm = p_rx_dbm + args.pad
+        p_tx_full = p_tx_dbm + loop.atten - TX_DIGITAL_DBFS
+        headroom = p_tx_full - RX_MAX_INPUT_DBM
+        rep.add(g, "transmit power", INFO,
+                f"{p_tx_dbm:+.1f} dBm at {loop.atten:.0f} dB attenuation and "
+                f"{TX_DIGITAL_DBFS:.0f} dBFS drive, so roughly "
+                f"{p_tx_full:+.1f} dBm flat out. Looping that back with no "
+                f"attenuator would put {headroom:+.0f} dB relative to the "
+                f"{RX_MAX_INPUT_DBM:+.1f} dBm the receive port survives.",
+                value=round(p_tx_full, 1), key=f"ch{pair}_tx_power_max_dbm")
+
+    loop.set_levels(atten=base_atten, rx_gain=base_gain)
 
     # -- how quiet is "off"? -------------------------------------------------
-    # Stop the stream and mute, then look again at the same bin. This is the
-    # transmit chain's residual leakage measured through the loop, and it is
-    # the check that notices if something has quietly unmuted the radio.
     loop.stop()
     time.sleep(0.2)
     quiet_spec, quiet = loop.measure()
@@ -750,7 +1019,7 @@ def test_loopback(b, rep, args):
               f"tone fell {drop:.1f} dB to {quiet:.1f} dBFS "
               f"(floor {quiet_spec.floor():.1f} dBFS) once the buffer closed "
               f"and the attenuators went to {TX_ATTEN_MUTE} dB",
-              warn=drop > 35, value=round(drop, 1), key="tx_mute_depth_db")
+              warn=drop > 35, value=round(drop, 1), key=f"ch{pair}_tx_mute_depth_db")
 
     # -- path loss across the tuning range -----------------------------------
     points = [100e6, 900e6, 2400e6] if args.quick else \
@@ -762,14 +1031,25 @@ def test_loopback(b, rep, args):
             b.tune(f)
             b.tune(f, tx=True)
             time.sleep(0.12)
+            loop.refresh_gain_limits()
             loop.set_levels(atten=base_atten, rx_gain=base_gain)
-            _, lv = loop.autorange()
+            lv = loop.autorange()[1]
             curve[int(f)] = round(loop.system_gain(lv), 2)
         except Exception as exc:
             curve[int(f)] = None
             rep.add(g, f"path loss at {f/1e6:.0f} MHz", WARN, str(exc))
     loop.stop()
-    rep.data["path_loss_curve"] = curve
+    rep.data[f"ch{pair}_path_loss_curve"] = curve
+
+    if loop.drifted:
+        rep.add(g, "settings changed on their own", WARN,
+                f"{len(loop.drifted)} time(s) the radio was not where it had "
+                f"been set; each was corrected before measuring. First: "
+                f"{loop.drifted[0]}")
+    else:
+        rep.add(g, "settings held throughout", INFO,
+                "every measurement confirmed the commanded gain and "
+                "attenuation were still in force")
 
     good = {k: v for k, v in curve.items() if v is not None}
     if good:
@@ -921,13 +1201,38 @@ def test_digital_interface(b, rep, sh):
 
 # What to compare, and how far it may drift before it is worth mentioning.
 BASELINE_TOLERANCE = {
-    "system_gain_db": (3.0, "dB of loop gain"),
-    "image_rejection_dbc": (8.0, "dBc of image rejection"),
-    "tx_mute_depth_db": (10.0, "dB of mute depth"),
     "digital_loopback_error_db": (1.0, "dB of digital loopback level error"),
     "dig_eye_passes": (25.0, "passing eye positions"),
     "dc_offset_dbfs": (12.0, "dB of DC offset"),
 }
+# ... plus these for every channel that was measured.
+BASELINE_TOLERANCE_PER_CHANNEL = {
+    "system_gain_db": (3.0, "dB of loop gain"),
+    "image_rejection_dbc": (8.0, "dBc of image rejection"),
+    "tx_mute_depth_db": (10.0, "dB of mute depth"),
+    "tx_power_max_dbm": (3.0, "dB of transmit power"),
+}
+
+
+def _compare_curve(rep, g, baseline, pair):
+    """Path loss then versus now, for one channel."""
+    key = f"ch{pair}_path_loss_curve"
+    old_curve = baseline.get(key) or {}
+    new_curve = rep.data.get(key) or {}
+    deltas = {}
+    for freq, now in new_curve.items():
+        then = old_curve.get(str(freq), old_curve.get(freq))
+        if isinstance(then, (int, float)) and isinstance(now, (int, float)):
+            deltas[int(freq)] = now - then
+    if not deltas:
+        return
+    worst_f = max(deltas, key=lambda k: abs(deltas[k]))
+    worst = deltas[worst_f]
+    rep.check(g, f"channel {pair} path loss across the range", abs(worst) <= 4.0,
+              "  ".join(f"{k/1e6:.0f}MHz {v:+.1f}" for k, v in sorted(deltas.items()))
+              + f"\n           worst {worst:+.1f} dB at {worst_f/1e6:.0f} MHz "
+                f"(tolerance 4 dB)",
+              warn=abs(worst) <= 8.0)
 
 
 def compare_baseline(rep, baseline):
@@ -941,7 +1246,12 @@ def compare_baseline(rep, baseline):
                 f"baseline is from serial {baseline['hw_serial']}, this is "
                 f"{rep.data['hw_serial']} - the comparison is meaningless")
 
-    for key, (tol, what) in BASELINE_TOLERANCE.items():
+    tolerances = dict(BASELINE_TOLERANCE)
+    for pair in (0, 1):
+        for key, tv in BASELINE_TOLERANCE_PER_CHANNEL.items():
+            tolerances[f"ch{pair}_{key}"] = tv
+
+    for key, (tol, what) in tolerances.items():
         old, new = baseline.get(key), rep.data.get(key)
         if not isinstance(old, (int, float)) or not isinstance(new, (int, float)):
             continue
@@ -950,25 +1260,8 @@ def compare_baseline(rep, baseline):
                   f"{old:+.1f} -> {new:+.1f} ({delta:+.1f}, tolerance "
                   f"{tol:.0f} {what})", warn=abs(delta) <= tol * 2)
 
-    old_curve = baseline.get("path_loss_curve") or {}
-    new_curve = rep.data.get("path_loss_curve") or {}
-    shared = [k for k in new_curve
-              if str(k) in {str(x) for x in old_curve} and new_curve[k] is not None]
-    if shared:
-        deltas = {}
-        for k in shared:
-            o = old_curve.get(str(k), old_curve.get(k))
-            if isinstance(o, (int, float)):
-                deltas[k] = new_curve[k] - o
-        if deltas:
-            worst_f = max(deltas, key=lambda k: abs(deltas[k]))
-            worst = deltas[worst_f]
-            rep.check(g, "path loss across the range", abs(worst) <= 4.0,
-                      "  ".join(f"{int(k)/1e6:.0f}MHz {v:+.1f}"
-                                for k, v in sorted(deltas.items()))
-                      + f"\n           worst {worst:+.1f} dB at "
-                        f"{int(worst_f)/1e6:.0f} MHz (tolerance 4 dB)",
-                      warn=abs(worst) <= 8.0)
+    for pair in (0, 1):
+        _compare_curve(rep, g, baseline, pair)
 
     old_rails = baseline.get("rails") or {}
     new_rails = rep.data.get("rails") or {}
@@ -992,12 +1285,17 @@ examples:
   %(prog)s --loopback --baseline hb.json    compare against that recording
 
 the loopback:
-  TX1 ---[ 20 or 30 dB pad ]--- RX1     (both pads in series is fine too)
+  TX1 ---[ 20 dB + 30 dB pad ]--- RX1        and TX2 ---[ pad ]--- RX2
 
-  This script never transmits with less than 20 dB of its own attenuation, so
-  its output stays at or below about -13 dBm - roughly 15 dB under the AD9361
-  receive port's +2.5 dBm rating even with no pad in the loop at all. Fit the
-  pad anyway: it is the margin that protects you from everything else.
+  THIS BOARD HAS A POWER AMPLIFIER (Mini-Circuits PGA-102+, 17.7 dB of gain at
+  50 MHz falling to 10.4 dB at 6 GHz, P1dB +17.5 dBm). Flat out it delivers
+  about +17 dBm into a receive port rated to +2.5 dBm, so a loopback with no
+  attenuator in it WILL damage the receiver. Fit at least 20 dB; 40-50 dB is
+  comfortable.
+
+  This script itself never transmits with less than 35 dB of its own
+  attenuation, which holds it under -16 dBm even into a bare cable. But it can
+  only protect you from itself.
 
   Never run --loopback with an antenna on the TX port.
 """
@@ -1012,8 +1310,15 @@ def build_parser():
     p.add_argument("--loopback", action="store_true",
                    help="run the RF tests. THIS TRANSMITS. Needs TX1 cabled to "
                         "RX1 through an attenuator")
-    p.add_argument("--channel", type=int, default=0, choices=(0, 1),
-                   help="which TX/RX pair the loop is on (default: 0)")
+    p.add_argument("--channel", default="0", choices=("0", "1", "both"),
+                   help="which TX/RX pair the loop is on. 'both' runs channel "
+                        "0, then asks you to move the cable to TX2/RX2 "
+                        "(default: %(default)s)")
+    p.add_argument("--pad", type=float, metavar="DB",
+                   help="how much attenuation is in the loopback cable, dB. "
+                        "Asked for interactively if not given. Needed to "
+                        "report absolute transmit power, and to notice that "
+                        "the loop is not what you think it is")
     p.add_argument("--centre", type=float, default=900e6,
                    help="frequency for the detailed loopback tests, Hz "
                         "(default: 900e6)")
@@ -1042,10 +1347,15 @@ def main(argv=None):
 
     if args.min_tx_atten < MIN_TX_ATTEN_DB:
         print(f"note: --min-tx-atten {args.min_tx_atten:g} dB is below the "
-              f"{MIN_TX_ATTEN_DB:g} dB default. Transmit power rises to about "
-              f"{7 - args.min_tx_atten:.0f} dBm; the AD9361 receive port is "
-              f"rated to +2.5 dBm, so the loop now NEEDS a real attenuator.",
-              file=sys.stderr)
+              f"{MIN_TX_ATTEN_DB:g} dB default. With the PA that puts up to "
+              f"{AD9361_TX_MAX_DBM + PA_GAIN_DB - args.min_tx_atten:+.0f} dBm "
+              f"on the transmit port, against a receive port rated to "
+              f"{RX_MAX_INPUT_DBM:+.1f} dBm. The loop now NEEDS at least "
+              f"{max(0, AD9361_TX_MAX_DBM + PA_GAIN_DB - args.min_tx_atten - RX_MAX_INPUT_DBM):.0f} dB "
+              f"of attenuation in it.", file=sys.stderr)
+
+    if args.loopback:
+        args.pad = ask_pad_db(args)
 
     rep = Report()
     try:
@@ -1075,7 +1385,19 @@ def main(argv=None):
         test_receiver(board, rep, args.quick)
 
         if args.loopback:
-            test_loopback(board, rep, args)
+            pairs = [0, 1] if args.channel == "both" else [int(args.channel)]
+            for i, pair in enumerate(pairs):
+                if i:
+                    if sys.stdin.isatty():
+                        input(f"\nMove the loopback to TX{pair+1} -> RX{pair+1} "
+                              f"(same attenuators), then press Enter. ")
+                    else:
+                        rep.add(f"RF loopback, channel {pair}", "skipped", INFO,
+                                "cannot prompt for the cable to be moved when "
+                                "not attached to a terminal; rerun with "
+                                f"--channel {pair}")
+                        break
+                test_loopback(board, rep, args, pair)
         else:
             rep.add("RF loopback", "skipped", INFO,
                     "not requested. Cable TX1 to RX1 through a 20-30 dB pad "

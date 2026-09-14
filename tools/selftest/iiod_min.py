@@ -131,6 +131,14 @@ class Iiod:
     def read_device(self, device, attr):
         return self._text(f"READ {device} {attr}")
 
+    def write_device(self, device, attr, value):
+        payload = f"{value}".encode() + b"\x00"
+        cmd = f"WRITE {device} {attr} {len(payload)}"
+        self._send(cmd)
+        self._f.write(payload)
+        self._f.flush()
+        self._status(cmd)
+
     def write(self, device, channel, attr, value, output=False):
         payload = f"{value}".encode() + b"\x00"
         cmd = (f"WRITE {device} {'OUTPUT' if output else 'INPUT'} "

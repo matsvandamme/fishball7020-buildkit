@@ -87,13 +87,26 @@ bent = [-22 + x for x in xs[:-1]] + [-22 + 25 - 3]
 slope, dev = S._fit_slope(xs, bent)
 check("a bent sweep shows a residual", dev > 1.0, f"worst residual {dev:.2f} dB")
 
-print("safety limits are what the documentation claims")
-check("the transmitter is capped at 20 dB of attenuation",
-      S.MIN_TX_ATTEN_DB >= 20.0, f"{S.MIN_TX_ATTEN_DB:g} dB")
-check("sweeps start quiet", S.START_TX_ATTEN_DB >= S.MIN_TX_ATTEN_DB,
-      f"{S.START_TX_ATTEN_DB:g} dB")
+print("the transmit floor keeps the PA below what the receiver survives")
+# The whole safety argument in one assertion: worst-case transmit power, at
+# the lowest attenuation the script will use, with the PA's highest gain and
+# NO external pad, must sit at least 10 dB under the receive port's rating.
+worst_dbm = S.AD9361_TX_MAX_DBM + S.PA_GAIN_DB - S.MIN_TX_ATTEN_DB
+margin = S.RX_MAX_INPUT_DBM - worst_dbm
+check("worst-case output is >=10 dB under the RX rating", margin >= 10.0,
+      f"{worst_dbm:+.1f} dBm into a bare cable vs {S.RX_MAX_INPUT_DBM:+.1f} dBm "
+      f"rated: {margin:.1f} dB of margin")
+check("the PA gain used for the budget is the datasheet worst case",
+      S.PA_GAIN_DB >= 17.7, f"{S.PA_GAIN_DB:g} dB (PGA-102+ is 17.7 dB at 50 MHz)")
+check("sweeps start quieter than the floor", S.START_TX_ATTEN_DB >= S.MIN_TX_ATTEN_DB,
+      f"start {S.START_TX_ATTEN_DB:g} dB, floor {S.MIN_TX_ATTEN_DB:g} dB")
 check("the receiver is kept away from full scale", S.TARGET_RX_DBFS <= -15,
       f"{S.TARGET_RX_DBFS:g} dBFS")
+check("the RX gain sweep stays below the gain table's LNA transition",
+      "for gain in (38.0, 42.0, 46.0, 50.0):" in
+      open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "sdr_selftest.py")).read(),
+      "38-51 dB is the widest window with no LNA transition in it")
 
 print()
 if fails:

@@ -55,22 +55,38 @@ TX1 ---[ 20 or 30 dB pad ]--- RX1        (both in series is fine)
 
 **This cannot overdrive your receiver, even if you forget the attenuator.**
 
-The AD9361's receive input is rated to about **+2.5 dBm**; its transmitter
-reaches about **+7 dBm** at full output. The script never transmits with less
-than **20 dB** of its own attenuation:
+The receiver is the fragile end: the AD9361's RX input is rated to about
+**+2.5 dBm**. And this board is sold in a variant with a **power amplifier** on
+transmit — a Mini-Circuits [PGA-102+](https://www.minicircuits.com/pdfs/PGA-102+.pdf)
+whose gain is strongly frequency dependent:
 
-| | TX output | At RX with **no** pad | With a 20 dB pad |
+| GHz | 0.05 | 0.8 | 2.0 | 3.0 | 4.0 | 6.0 |
+|---|---|---|---|---|---|---|
+| **Gain (dB)** | **17.7** | 15.9 | 14.0 | 12.5 | 11.5 | 10.4 |
+
+P1dB is about +17.5 dBm. Measured here at 900 MHz through a 50 dB pad, the
+board delivers roughly **+18.5 dBm** flat out — about **16 dB above what its
+own receive port survives**. Sizing a loopback for a bare AD9361, as most Pluto
+advice does, gets this dangerously wrong.
+
+So the script never transmits with less than **35 dB** of its own attenuation:
+
+| | TX output | At RX with **no** pad | With a 50 dB pad |
 |---|---|---|---|
-| Script's floor | −13 dBm | **−13 dBm** | −33 dBm |
+| Script's floor, at its −6 dBFS drive | −16 dBm | **−16 dBm** | −66 dBm |
+| Same floor, at full-scale drive | −10 dBm | −10 dBm | −60 dBm |
 | Damage threshold | | **+2.5 dBm** | |
 
-That is 15.5 dB of margin in the worst case — a bare cable, or the two ports
-joined by a barrel. Every sweep *starts* at 40 dB (−33 dBm), measures the
-loop, and only then works downward toward the floor. A 30 dB span is more than
-enough to prove the gain chain is linear, so there is nothing to gain from
-going louder.
+That is 12.5 dB of margin in the worst case that can be constructed — full
+scale, highest PA gain, two ports joined by a barrel. Sweeps *start* at 50 dB,
+measure the loop, and only then work downward toward the floor. A 25 dB span is
+ample to prove the gain chain is linear, so there is nothing to gain from going
+louder. `--min-tx-atten` can lower it and prints the resulting power budget.
 
-`--min-tx-atten` can lower the floor and prints a warning saying why not to.
+**It also asks how much attenuation is in your cable**, then checks your answer
+against what it measures and says so if the two disagree by more than 8 dB. A
+pad that is missing, is the wrong value, or is not making contact is the
+failure that destroys receivers, so it is worth one question.
 
 Other guarantees:
 
@@ -81,9 +97,25 @@ Other guarantees:
   else is put back.
 - The receiver is held around −22 dBFS and backed off if it approaches full
   scale, so measurements are never taken in compression.
+- Every measurement reads back the gain and attenuation actually in force and
+  re-asserts them if they have moved, so a setting that changes underneath the
+  test is corrected and reported rather than silently corrupting a number.
 
-**Do not run `--loopback` with an antenna on the TX port.** Nothing here will
-hurt the board, but it is a transmitter and most of its range is licensed.
+**Do not run `--loopback` with an antenna on the TX port.** Most of this
+board's range is licensed spectrum, and with the PA it is not a trivial
+transmitter.
+
+## Both channels
+
+The board has two transmit and two receive ports. `--channel both` measures
+pair 0, then asks you to move the loopback to TX2/RX2 and press Enter:
+
+```bash
+./sdr_selftest.py --ssh --loopback --pad 50 --channel both
+```
+
+With one set of attenuators you can only test one pair at a time, which is why
+it prompts rather than assuming. `--channel 1` runs just the second pair.
 
 ## Baselines
 
