@@ -41,22 +41,6 @@ for i in $(seq 1 $MAX_ITERS); do
         exit 1
     fi
 
-    # An empty file is a FAILED DOWNLOAD, not hash drift. Recording its hash
-    # would bake the corruption in and make the check that caught it useless.
-    # Delete the artifact so buildroot fetches it again, and retry. This is
-    # the common case after a build is interrupted mid-download.
-    EMPTY_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-    if [ "$got" = "$EMPTY_SHA256" ]; then
-        echo "$fname hashed as an empty file - treating as a failed download, not drift" | tee -a "$LOG"
-        n=$(find buildroot/dl -type f -size 0 -not -name '.lock' -print -delete 2>/dev/null | wc -l)
-        echo "  removed $n empty download(s); retrying" | tee -a "$LOG"
-        if [ "$n" -eq 0 ]; then
-            echo "  ...but found none to remove, so this is not a truncated download; stopping." | tee -a "$LOG"
-            exit 1
-        fi
-        continue
-    fi
-
     # Identify the package from make's own error line, which names the .mk it
     # was running:
     #     make[1]: *** [package/dosfstools/dosfstools.mk:62: ...] Error 1
@@ -82,6 +66,33 @@ for i in $(seq 1 $MAX_ITERS); do
         echo "Could not find a .hash file for package '$pkg'; stopping." | tee -a "$LOG"
         exit 1
     fi
+    # An empty file is a FAILED DOWNLOAD, not hash drift. Recording its hash
+    # would bake the corruption in and disable the check that caught it.
+    #
+    # Clearing dl/ alone is not enough: buildroot keeps .stamp_downloaded and
+    # .stamp_extracted inside the package's build directory, so with those
+    # present it never re-fetches and the empty file survives every retry.
+    # Remove both, and let the package be redone from scratch.
+    EMPTY_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    if [ "$got" = "$EMPTY_SHA256" ]; then
+        echo "$fname in $pkg hashed as an empty file - a failed download, not drift" | tee -a "$LOG"
+        removed=0
+        while IFS= read -r f; do
+            rm -f "$f" && removed=$((removed + 1))
+        done < <(find buildroot/dl -type f -size 0 ! -name '.lock' 2>/dev/null)
+        for d in buildroot/output/build/"$pkg"-* buildroot/output/build/host-"$pkg"-*; do
+            [ -d "$d" ] || continue
+            rm -rf "$d" && removed=$((removed + 1))
+            echo "  discarded $d so it is fetched and extracted again" | tee -a "$LOG"
+        done
+        echo "  cleared $removed item(s); retrying" | tee -a "$LOG"
+        if [ "$removed" -eq 0 ]; then
+            echo "  ...but there was nothing to clear, so the file is genuinely empty upstream; stopping." | tee -a "$LOG"
+            exit 1
+        fi
+        continue
+    fi
+
     if ! grep -qE "^sha256[[:space:]]+\S+[[:space:]]+$(printf '%s' "$fname" | sed 's/[.[\*^$]/\\&/g')[[:space:]]*$" "$hash_file"; then
         echo "$hash_file does not record a hash for $fname; stopping rather than guessing." | tee -a "$LOG"
         exit 1
