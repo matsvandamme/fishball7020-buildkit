@@ -1019,11 +1019,26 @@ def test_loopback(b, rep, args, pair=0):
     # Sweep quieter only - never towards full output - and check the received
     # level follows one for one. Compression or a damaged output stage bends it.
     base_atten, base_gain = loop.atten, loop.rx_gain
+    # Sweep BOTH ways from the operating point, not just quieter.
+    #
+    # Only ever going quieter runs out of room as the external pad shrinks: a
+    # strong loop puts the operating point high, and the ceiling then truncates
+    # the sweep. Measured with a 20 dB pad, the point sat at 62 dB and the span
+    # collapsed from 25 dB to 18. Going down as well costs nothing in safety -
+    # min_tx_atten still governs how loud this can ever get, and every point is
+    # checked against it - and it keeps the full span at any pad value.
+    span_target = 25.0
+    lo = max(loop.min_atten, base_atten - span_target / 2)
+    hi = min(MAX_TX_ATTEN_DB, lo + span_target)
+    lo = max(loop.min_atten, hi - span_target)       # re-extend downward if the top clipped
     pts = []
-    for step in (0, 5, 10, 15, 20, 25):
-        loop.set_levels(atten=base_atten + step)
+    steps = 5
+    for k in range(steps + 1):
+        loop.set_levels(atten=lo + (hi - lo) * k / steps)
         lv = loop.measure(8192)[1]
-        if not pts or loop.atten != pts[-1][0]:      # clamped: stop, do not repeat
+        if lv > MAX_RX_DBFS:                          # never measure in compression
+            continue
+        if not pts or loop.atten != pts[-1][0]:       # clamped: do not repeat a point
             pts.append((loop.atten, lv))
     loop.set_levels(atten=base_atten)
     span = pts[-1][0] - pts[0][0] if len(pts) > 1 else 0.0
