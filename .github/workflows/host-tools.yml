@@ -1,0 +1,55 @@
+name: Host tools
+
+# The host-side Python tooling has no hardware in CI, so this checks the parts
+# that can be checked without a board: that everything imports and compiles on
+# the Python versions people actually have, and that the self-test's
+# measurement maths is right. A health check that reports the wrong dB figure
+# is worse than no health check, so those numbers are asserted against signals
+# whose answers are known exactly.
+
+on:
+  push:
+    paths:
+      - "tools/**"
+      - "firmware/scripts/*.py"
+      - ".github/workflows/host-tools.yml"
+  pull_request:
+    paths:
+      - "tools/**"
+      - "firmware/scripts/*.py"
+  workflow_dispatch:
+
+jobs:
+  host-tools:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Everything compiles
+        run: python -m compileall -q tools firmware/scripts
+
+      # Deliberately with no numpy installed: the pure-Python FFT fallback is
+      # the path most users on a bare machine will take, so it is the one that
+      # must be right.
+      - name: Measurement maths, without numpy
+        run: python tools/selftest/test_dsp.py
+
+      - name: Measurement maths, with numpy
+        run: |
+          python -m pip install --quiet numpy
+          python tools/selftest/test_dsp.py
+
+      - name: The self-test refuses to run without a board, rather than hanging
+        run: |
+          timeout 60 python tools/selftest/sdr_selftest.py --uri ip:203.0.113.1 \
+            && { echo "should have failed"; exit 1; } || test $? -eq 2
+
+      - name: FIR coefficient generator still designs a filter it stands behind
+        run: python firmware/scripts/gen_fir_coe.py

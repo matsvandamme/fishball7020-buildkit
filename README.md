@@ -141,6 +141,7 @@ login prompt — no prior knowledge assumed.
 - [The stock block design: IPs, wiring, and what you can change](docs/block-design.md)
 - [Worked example: an FM channelizer in the FPGA](docs/wbfm-channelizer.md)
 - [Transmitter safety](#transmitter-safety) — TX is muted when nothing is being sent
+- [Is the board healthy?](#is-the-board-healthy) — a self-test that measures, cable optional
 - [Controlling the USER LED](docs/user-led.md) — for custom projects
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist) ·
@@ -812,6 +813,10 @@ fishball7020-fpga-devkit/
 │
 ├── tools/
 │   ├── env-vivado.sh                    ← source this before any vivado/xsct/bootgen command
+│   ├── selftest/                        ← is the board damaged? measures and says (see below)
+│   │   ├── sdr_selftest.py              rails, BIST, receiver, and an RF loopback sweep
+│   │   ├── iiod_min.py                  libiio's network protocol over a plain socket, stdlib only
+│   │   └── test_dsp.py                  asserts the measurement maths, no board needed
 │   └── legacy-libs/libs/                vendored libtinfo5/libncurses5/libssl1.1 (see below)
 │
 └── firmware/       the only firmware target — factory-default USB+Ethernet build
@@ -900,6 +905,57 @@ without the patch.
 > reach about **+7 dBm** at 0 dB attenuation. Connect the cable with TX
 > attenuation at maximum, fit an inline 20–30 dB attenuator if you have one,
 > and raise the power in steps.
+
+## Is the board healthy?
+
+If you have overdriven an input, transmitted into an open port, or the board
+has simply stopped behaving, `tools/selftest/` answers the question with
+measurements rather than with "well, it still enumerates".
+
+```bash
+cd tools/selftest
+./sdr_selftest.py --ssh                       # no cable, never transmits
+./sdr_selftest.py --ssh --loopback            # + the RF tests
+```
+
+Python 3.8 and nothing else — `numpy` is used for the FFT if you have it and a
+pure-Python transform if you don't.
+
+**Without a cable**, it reads the six Zynq supply rails against their ±5%
+limits and both die temperatures, runs the AD9361's own **digital-interface
+eye scan** (all 16×16 clock/data delay combinations with a PRBS running, which
+is how you catch an LVDS link that has gone marginal), pushes a tone through
+the chip's **internal digital loopback** to prove both DMAs and the FPGA
+datapath, then exercises the receiver: capture integrity, DC offset, gain-chain
+response over 70 dB, both channels, and synthesiser lock from 70 MHz to 6 GHz.
+The two BIST checks live in debugfs, which is why they need `--ssh`; everything
+else runs over libiio alone.
+
+**With a loopback** — `TX1 ─[20 or 30 dB pad]─ RX1` — it adds the analogue
+path: TX attenuator linearity over 25 dB, RX gain linearity over 40 dB, image
+rejection, 2nd and 3rd harmonic distortion, path loss at eight frequencies from
+100 MHz to 5 GHz (which is what finds a blown balun — it shows up as a hole in
+one band and nowhere else), and how far the transmitter actually falls when it
+is stopped.
+
+**It cannot overdrive your receiver, even if you forget the attenuator.** The
+AD9361's RX input is rated to about +2.5 dBm and its transmitter reaches about
++7 dBm, so the script never transmits with less than **20 dB** of its own
+attenuation — about −13 dBm, some 15 dB below the rating with a *bare cable*
+and no pad at all. Sweeps start at 40 dB and only ever work downward toward
+that floor. Nothing transmits at all without `--loopback`, and every setting is
+restored on exit, including after Ctrl-C.
+
+Path loss depends on your cable and your pad, so there is no universal number
+for it. Record a baseline while the board is known good and compare later:
+
+```bash
+./sdr_selftest.py --ssh --loopback --save-baseline ~/board-healthy.json
+./sdr_selftest.py --ssh --loopback --baseline     ~/board-healthy.json
+```
+
+That turns *"is 41.6 dB of loss at 2.4 GHz correct?"* into *"it was 41.5 dB in
+March"*. Full details in [`tools/selftest/README.md`](tools/selftest/README.md).
 
 ## Troubleshooting
 
