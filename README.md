@@ -144,6 +144,7 @@ login prompt — no prior knowledge assumed.
 - [Controlling the USER LED](docs/user-led.md) — for custom projects
 - [Troubleshooting](#troubleshooting)
 - [How this repo came to exist](#how-this-repo-came-to-exist) ·
+  [The end-to-end test](#the-end-to-end-test) ·
   [Vendor resources](#vendor-resources) · [License](#license)
 
 ## Boot modes (BOOT DIP switch)
@@ -682,6 +683,32 @@ a weaker safety net than a folder on your own disk.
 
 ## 7. Verify your build is actually running
 
+**Before you flash**, check the build made sense. Flashing and rebooting costs
+several minutes; this costs a second:
+
+```bash
+# run from: firmware/
+./scripts/verify_output.sh
+```
+
+It asserts the five SD-card files are present and non-trivial, that the
+bitstream is compressed (an uncompressed one overflows the FSBL's OCM and
+BOOT.bin silently fails to boot), and that no setup endpoint fails timing —
+then prints what is actually in the design, so you can see your change landed:
+
+```
+== FPGA design ==
+  PASS  utilization report present
+        DSP48s 96 / 220   Slice LUTs 12664 / 53200
+        -> channelizer filter (321 taps)
+        block design: rx_ddc (Fs/4 shifter) is wired in
+  PASS  ad_fs4_ddc.v present alongside it
+        FIR coefficients: coefile_wbfm_102100.coe
+```
+
+It exits non-zero if anything is wrong, so it works in a script too.
+
+
 **Which USB port is which** — the board has two, and they do completely
 different things:
 
@@ -806,6 +833,7 @@ fishball7020-fpga-devkit/
     │   ├── boot.bif                    bootgen recipe: FSBL + bitstream + U-Boot → BOOT.bin
     │   ├── gen_fir_coe.py              designs + verifies FIR coefficients (stdlib only, no MATLAB)
     │   ├── gen_fir_coe.m               the MATLAB equivalent (equiripple; needs the SP Toolbox)
+    │   ├── verify_output.sh            checks output/ is complete and reports what's in the bitstream
     │   └── coefile_*.coe               generated coefficients; build_all.sh copies these into src/
     ├── src/                            ← created by setup.sh, NOT committed to git (see .gitignore)
     │   │                                 the actual upstream source tree you'll edit HDL/kernel/etc in:
@@ -966,6 +994,53 @@ from public sources alone). See the
 [firmware README](firmware/README.md) for the exact
 patch list, including two genuine upstream bugs (hardcoded debug
 leftovers) found and fixed along the way.
+
+### The end-to-end test
+
+The claim this repo has to earn is narrow and testable: *a fresh clone, an
+edit, and a rebuild produce firmware whose FPGA actually contains the edit.*
+That was run as a two-phase test on 14 September 2026, against real hardware,
+flashing via the SD partition only.
+
+**Phase A — a clean clone must reproduce stock.** `git clone`, `setup.sh`,
+then a cold full build with no Vivado project to reuse.
+
+| | |
+|---|---|
+| Patches applied | 0001, 0002, 0004 — `optional/0003` skipped, with a message saying so |
+| Output | the 5 SD-card files, nothing else |
+| `devicetree.dtb` | byte-identical to the reference build |
+| RX path | no `rx_ddc`, stock `coefile_int.coe`, **72 / 220 DSP48s** |
+| BOOT.bin | 2 849 940 B, bitstream compressed |
+| Timing | 0 failing endpoints |
+| On the board | correct `hw_model`, persistent serial, TX attenuated at boot, LO spur at **+0 kHz** |
+
+**Phase B — an HDL change must reach the fabric.** The same tree, with
+`optional/0003-wbfm-channelizer.patch` applied, the Vivado project deleted,
+and `build_all.sh --hdl-only` re-run.
+
+| | |
+|---|---|
+| RX path | `rx_ddc` wired, `coefile_wbfm_102100.coe`, **96 / 220 DSP48s** |
+| BOOT.bin | 2 626 580 B — a different bitstream, still compressed |
+| Timing | WNS +0.292 ns, 0 failing endpoints of 55 269 |
+| On the board | LO spur moved to **−1000 kHz** |
+
+That last row is the whole test in one number. The AD9361's LO leakage and DC
+offset land at exactly 0 Hz and cannot be moved by anything in software — so a
+spur that has moved to −1 MHz can only have been moved by logic running in the
+FPGA. It is the Fs/4 shifter, in the fabric, doing its job.
+
+Engaging the ÷8 filter on that build confirms the rest of the datapath:
+
+| | Filter bypassed | Filter engaged |
+|---|---|---|
+| Out-of-band signal at −724 kHz | −66.5 dBFS, 37.8 dB over the floor | gone |
+| Capture RMS | −49.2 dBFS | −78.6 dBFS |
+
+The board was then reflashed back to the stock build and re-verified — spur
+back at +0 kHz. `firmware/scripts/verify_output.sh` is the build-side half of
+this test, kept in the repo so you can run it on your own builds.
 
 ## Vendor resources
 

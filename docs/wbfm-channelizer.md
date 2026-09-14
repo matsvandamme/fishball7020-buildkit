@@ -224,6 +224,24 @@ the AD9361 on its own and does not know about the FPGA decimator.
 filter, and a neighbouring station should reappear in the spectrum display.
 Set it to 528000 again and it should vanish into the noise floor.
 
+Run on hardware, with the rate plan above and a 65 536-point transform:
+
+| | Filter bypassed | Filter engaged |
+|---|---|---|
+| Out-of-band signal at −724 kHz | −66.5 dBFS, 37.8 dB over the floor | gone |
+| Capture RMS | −49.2 dBFS | −78.6 dBFS |
+| Peak sample | 23 LSB | 1 LSB |
+
+29 dB of total captured energy removed, and nothing left standing outside the
+passband. Note the measured noise floor also drops 22.6 dB, because decimation
+folds eight times less bandwidth into the delivered stream.
+
+Before that, the simpler check that the shifter is in the fabric at all: with
+`rx_ddc` present the LO-leakage spur — which sits at exactly 0 Hz on any
+zero-IF receiver and cannot be moved from software — appears at −1.056 MHz
+instead. If it is still at DC, the bitstream you flashed does not contain the
+change.
+
 ## Retuning to another station
 
 The FPGA filter sits at DC, so it follows the LO — any FM station works at
