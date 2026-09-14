@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="340" viewBox="0 0 760 340" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" role="img" aria-label="Difference between the two channels, split into receive and transmit contributions. The receive difference steps by 2.55 dB at 4 GHz while the transmit difference stays flat.">
+<rect width="760" height="340" fill="#1a1a19"/>
+<line x1="62" y1="262.6" x2="610" y2="262.6" stroke="#33322f" stroke-width="1"/>
+<text x="52" y="266.6" text-anchor="end" font-size="12" fill="#c3c2b7">-6</text>
+<line x1="62" y1="211.8" x2="610" y2="211.8" stroke="#33322f" stroke-width="1"/>
+<text x="52" y="215.8" text-anchor="end" font-size="12" fill="#c3c2b7">-4</text>
+<line x1="62" y1="161.0" x2="610" y2="161.0" stroke="#33322f" stroke-width="1"/>
+<text x="52" y="165.0" text-anchor="end" font-size="12" fill="#c3c2b7">-2</text>
+<line x1="62" y1="110.2" x2="610" y2="110.2" stroke="#33322f" stroke-width="1"/>
+<text x="52" y="114.2" text-anchor="end" font-size="12" fill="#c3c2b7">+0</text>
+<line x1="62" y1="59.4" x2="610" y2="59.4" stroke="#33322f" stroke-width="1"/>
+<text x="52" y="63.4" text-anchor="end" font-size="12" fill="#c3c2b7">+2</text>
+<line x1="62" y1="110.2" x2="610" y2="110.2" stroke="#8a8985" stroke-width="1" opacity="0.5"/>
+<line x1="74.3" y1="288" x2="74.3" y2="293" stroke="#33322f" stroke-width="1"/>
+<text x="74.3" y="309" text-anchor="middle" font-size="12" fill="#c3c2b7">70</text>
+<line x1="116.1" y1="288" x2="116.1" y2="293" stroke="#33322f" stroke-width="1"/>
+<text x="116.1" y="309" text-anchor="middle" font-size="12" fill="#c3c2b7">100</text>
+<line x1="197.2" y1="288" x2="197.2" y2="293" stroke="#33322f" stroke-width="1"/>
+<text x="197.2" y="309" text-anchor="middle" font-size="12" fill="#c3c2b7">200</text>
+<line x1="304.5" y1="288" x2="304.5" y2="293" stroke="#33322f" stroke-width="1"/>
+<text x="304.5" y="309" text-anchor="middle" font-size="12" fill="#c3c2b7">500</text>
+<line x1="385.6" y1="288" x2="385.6" y2="293" stroke="#33322f" stroke-width="1"/>
+<text x="385.6" y="309" text-anchor="middle" font-size="12" fill="#c3c2b7">1 GHz</text>
+<line x1="466.8" y1="288" x2="466.8" y2="293" stroke="#33322f" stroke-width="1"/>
+<text x="466.8" y="309" text-anchor="middle" font-size="12" fill="#c3c2b7">2</text>
+<line x1="574.0" y1="288" x2="574.0" y2="293" stroke="#33322f" stroke-width="1"/>
+<text x="574.0" y="309" text-anchor="middle" font-size="12" fill="#c3c2b7">5</text>
+<text x="336" y="328" text-anchor="middle" font-size="12" fill="#c3c2b7">Frequency (MHz, log scale)</text>
+<text x="16" y="161" text-anchor="middle" font-size="12" fill="#c3c2b7" transform="rotate(-90 16 161)">Channel difference (dB)</text>
+<line x1="547.5" y1="38" x2="547.5" y2="288" stroke="#8a8985" stroke-width="1" stroke-dasharray="3 3"/>
+<polyline points="74.3,118.6 83.2,100.9 92.0,134.7 100.8,133.6 109.7,169.8 118.5,133.3 127.3,136.6 136.1,154.9 145.0,144.6 153.8,148.3 162.6,140.3 171.5,123.8 180.3,152.6 189.1,157.1 198.0,137.4 206.8,144.6 215.6,154.3 224.5,151.2 233.3,133.6 242.1,152.0 250.9,151.7 259.8,167.9 268.6,130.3 277.4,130.3 286.3,168.2 295.1,123.5 303.9,114.9 312.8,135.1 321.6,150.6 330.4,158.8 339.3,158.3 348.1,129.8 356.9,161.6 365.7,135.7 374.6,140.3 383.4,147.7 392.2,153.8 401.1,154.6 409.9,150.7 418.7,148.3 427.6,143.5 436.4,156.4 445.2,157.6 454.1,160.1 462.9,150.8 471.7,151.6 480.5,152.0 489.4,158.6 497.5,154.0 498.2,154.3 499.5,151.0 501.5,147.0 503.6,145.4 505.6,143.1 507.0,142.8 507.7,141.8 509.7,142.1 511.7,143.2 513.8,145.9 515.8,148.4 515.9,149.8 517.9,151.5 519.9,154.1 522.0,154.9 524.0,153.4 524.7,154.9 526.0,152.2 528.1,149.4 530.1,146.4 532.2,145.5 533.5,145.6 534.2,145.4 536.2,148.2 538.3,153.5 540.3,158.6 542.4,164.2 542.4,166.2 544.4,168.9 546.4,167.1 548.5,246.0 550.5,237.6 551.2,235.4 552.6,232.1 554.6,232.4 556.7,236.3 558.7,239.1 560.0,239.6 560.7,238.2 562.8,229.8 564.8,223.4 566.9,214.3 568.9,209.0 568.9,211.7 570.9,212.2 573.0,214.0 575.0,211.0 577.1,200.0 577.7,194.4 579.1,181.8 581.1,168.4 583.2,167.5 585.2,181.1 586.5,195.0 587.3,203.4 595.3,158.0" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="605.3" y="162.0" font-size="12.5" fill="#ffffff">receive:  R0 − R1</text>
+<polyline points="74.3,105.0 83.2,47.2 92.0,147.9 100.8,101.9 109.7,101.2 118.5,108.5 127.3,122.1 136.1,98.5 145.0,115.7 153.8,109.8 162.6,112.1 171.5,128.9 180.3,108.9 189.1,89.4 198.0,85.9 206.8,113.2 215.6,117.9 224.5,98.1 233.3,107.4 242.1,102.7 250.9,99.7 259.8,119.5 268.6,140.9 277.4,112.6 286.3,71.8 295.1,126.1 303.9,106.1 312.8,109.1 321.6,104.7 330.4,76.7 339.3,70.4 348.1,113.6 356.9,107.3 365.7,119.3 374.6,110.5 383.4,98.6 392.2,116.9 401.1,106.8 409.9,112.9 418.7,115.2 427.6,108.3 436.4,110.5 445.2,100.3 454.1,93.1 462.9,101.6 471.7,92.9 480.5,115.7 489.4,118.7 497.5,116.3 498.2,113.6 499.5,113.2 501.5,112.0 503.6,109.2 505.6,107.5 507.0,108.0 507.7,108.3 509.7,106.8 511.7,103.2 513.8,98.0 515.8,93.2 515.9,93.7 517.9,91.4 519.9,95.1 522.0,98.5 524.0,98.4 524.7,97.5 526.0,93.7 528.1,87.6 530.1,84.4 532.2,88.7 533.5,97.8 534.2,98.8 536.2,104.6 538.3,102.1 540.3,101.9 542.4,105.2 542.4,103.0 544.4,107.3 546.4,108.4 548.5,99.2 550.5,92.4 551.2,95.1 552.6,95.8 554.6,98.5 556.7,94.7 558.7,89.4 560.0,89.9 560.7,91.4 562.8,105.4 564.8,108.7 566.9,108.8 568.9,117.9 568.9,114.8 570.9,118.1 573.0,113.4 575.0,109.6 577.1,109.2 577.7,111.9 579.1,104.5 581.1,86.5 583.2,62.8 585.2,45.4 586.5,44.3 587.3,41.0 595.3,88.0" fill="none" stroke="#d95926" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="605.3" y="92.0" font-size="12.5" fill="#ffffff">transmit: T0 − T1</text>
+<text x="539.5" y="50" text-anchor="end" font-size="11.5" fill="#8a8985">4 GHz</text>
+<text x="76" y="252.4" font-size="11.5" fill="#8a8985">across 4 GHz the receive difference steps 2.55 dB; the transmit difference moves 0.42 dB</text>
+<text x="76" y="272.8" font-size="11.5" fill="#8a8985">so the step is in the receiver, as an RX gain-table change should be</text>
+</svg>

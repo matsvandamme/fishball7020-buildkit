@@ -661,21 +661,27 @@ def _implied_pad_db(system_gain, freq_hz, with_pa=True):
 class Loop:
     """A TX->RX measurement at one frequency, kept at a safe level."""
 
-    def __init__(self, board, fs=SWEEP_FS, pair=0, min_atten=MIN_TX_ATTEN_DB):
+    def __init__(self, board, fs=SWEEP_FS, pair=0, min_atten=MIN_TX_ATTEN_DB,
+                 rx_pair=None):
         self.b = board
         self.fs = fs
-        self.pair = pair
+        # Transmit and receive pairs are tracked separately so the loop can be
+        # crossed - TX0 into RX1, say. A straight loopback measures T+R for one
+        # channel and cannot separate the two; measuring a cross as well makes
+        # the DIFFERENCES solvable: R0-R1 = L00-L01 and T0-T1 = L01-L11.
+        self.pair = pair                              # transmit
+        self.rx_pair = pair if rx_pair is None else rx_pair
         self.min_atten = min_atten
         self.atten = START_TX_ATTEN_DB
         self.rx_gain = 30.0
         self.f_off = fs / 16                          # exact bin of the cyclic buffer
         self.running = False
-        self.gain_lo, self.gain_hi = board.rx_gain_limits(pair)
+        self.gain_lo, self.gain_hi = board.rx_gain_limits(self.rx_pair)
         self.drifted = []                             # settings that moved on their own
 
     def refresh_gain_limits(self):
         """Call after retuning: the legal gain range moves with the band."""
-        self.gain_lo, self.gain_hi = self.b.rx_gain_limits(self.pair)
+        self.gain_lo, self.gain_hi = self.b.rx_gain_limits(self.rx_pair)
         if not self.gain_lo <= self.rx_gain <= self.gain_hi:
             self.set_levels(rx_gain=self.rx_gain)     # re-clamp into the new band
 
@@ -714,13 +720,13 @@ class Loop:
         if rx_gain is not None:
             self.rx_gain = float(round(min(self.gain_hi,
                                            max(self.gain_lo, rx_gain))))
-            self.b.set_rx_gain(self.rx_gain, self.pair)
+            self.b.set_rx_gain(self.rx_gain, self.rx_pair)
         time.sleep(0.05)
 
     def reassert(self):
         """Put the commanded levels back, whatever the radio currently thinks."""
         self.b.set_tx_atten(-self.atten, self.pair)
-        self.b.set_rx_gain(self.rx_gain, self.pair)
+        self.b.set_rx_gain(self.rx_gain, self.rx_pair)
         time.sleep(0.05)
 
     # -- measurement ---------------------------------------------------------
@@ -742,7 +748,7 @@ class Loop:
         if verify:
             try:
                 atten = -self.b.rdf(PHY, f"voltage{self.pair}", "hardwaregain", True)
-                gain = self.b.rdf(PHY, f"voltage{self.pair}", "hardwaregain")
+                gain = self.b.rdf(PHY, f"voltage{self.rx_pair}", "hardwaregain")
                 if abs(atten - self.atten) > 0.3 or abs(gain - self.rx_gain) > 0.3:
                     self.drifted.append(
                         f"TX attenuation {atten:.2f} dB (set {self.atten:.2f}), "
@@ -750,7 +756,7 @@ class Loop:
                     self.reassert()
             except Exception:
                 pass
-        spec = Spectrum(self.b.capture(n, self.pair))
+        spec = Spectrum(self.b.capture(n, self.rx_pair))
         return spec, spec.peak_near(self.f_off, self.fs)
 
     def autorange(self, target=TARGET_RX_DBFS):
@@ -868,12 +874,16 @@ def ask_pad_db(args):
         return value
 
 
-def test_loopback(b, rep, args, pair=0):
-    g = f"RF loopback, channel {pair}"
+def test_loopback(b, rep, args, pair=0, rx_pair=None):
+    rx_pair = pair if rx_pair is None else rx_pair
+    crossed = rx_pair != pair
+    tag = f"tx{pair}rx{rx_pair}" if crossed else f"ch{pair}"
+    g = (f"RF loopback, TX{pair} into RX{rx_pair}" if crossed
+         else f"RF loopback, channel {pair}")
     fs = SWEEP_FS
     centre = args.centre
 
-    if b.dev[RX][1] < (pair + 1) * 2:
+    if b.dev[RX][1] < (max(pair, rx_pair) + 1) * 2:
         rep.add(g, "channel available", WARN,
                 f"the capture device has only {b.dev[RX][1]} scan channels, so "
                 f"pair {pair} does not exist in this bitstream")
@@ -883,9 +893,9 @@ def test_loopback(b, rep, args, pair=0):
     b.tune(centre)
     b.tune(centre, tx=True)
     b.wr(PHY, TX_LO, "powerdown", 0, True)
-    b.set_rx_gain(30, pair)
+    b.set_rx_gain(30, rx_pair)
 
-    loop = Loop(b, fs, pair, args.min_tx_atten)
+    loop = Loop(b, fs, pair, args.min_tx_atten, rx_pair=rx_pair)
     loop.start()
     spec, level = loop.autorange()
     floor = spec.floor()
@@ -899,7 +909,7 @@ def test_loopback(b, rep, args, pair=0):
                   f"attenuation and {loop.rx_gain:.0f} dB of RX gain, and saw "
                   f"only {snr:.1f} dB above the noise floor.\n"
                   f"           Check the cable runs from TX{pair+1} to "
-                  f"RX{pair+1}, that the pad is not more than about 60 dB, and "
+                  f"RX{rx_pair+1}, that the pad is not more than about 60 dB, and "
                   f"that both connectors are tight.")
         return
 
@@ -915,16 +925,16 @@ def test_loopback(b, rep, args, pair=0):
     rep.add(g, "loop attenuation", INFO,
             f"measures about {(pad_measured if has_pa else pad_no_pa):.0f} dB "
             f"(+/-3 dB); you said {args.pad:.0f} dB. System gain {sysg:.1f} dB.",
-            value=round(sysg, 2), key=f"ch{pair}_system_gain_db")
+            value=round(sysg, 2), key=f"{tag}_system_gain_db")
     rep.add(g, "board variant", INFO,
             (f"consistent with the PA variant ({pa_gain_db(centre):.1f} dB of "
              f"PGA-102+ gain at {centre/1e6:.0f} MHz)" if has_pa else
              f"consistent with the variant WITHOUT the PA - the loop has "
              f"{pa_gain_db(centre):.0f} dB less gain than a PA-equipped board"),
-            value=has_pa, key=f"ch{pair}_pa_fitted")
+            value=has_pa, key=f"{tag}_pa_fitted")
     if not has_pa:
         pad_measured = pad_no_pa
-    rep.data[f"ch{pair}_implied_pad_db"] = round(pad_measured, 1)
+    rep.data[f"{tag}_implied_pad_db"] = round(pad_measured, 1)
 
     # Does the loop contain what the user believes it contains? Getting this
     # wrong is the mistake that kills receivers, so it is worth saying out loud
@@ -993,20 +1003,20 @@ def test_loopback(b, rep, args, pair=0):
     rep.add(g, "image rejection before recalibrating", INFO,
             f"{imr_found:.1f} dBc as found, {imr:.1f} dBc after a fresh "
             f"TX quadrature calibration",
-            value=round(imr_found, 1), key=f"ch{pair}_image_rejection_asfound_dbc")
+            value=round(imr_found, 1), key=f"{tag}_image_rejection_asfound_dbc")
     if image < floor + 6.0:
         rep.check(g, "image rejection", usable > 35,
                   f"better than {usable:.1f} dBc - the image is below the "
                   f"noise floor of this capture ({floor:.1f} dBFS), so this is "
                   f"a bound, not a reading.",
-                  value=round(usable, 1), key=f"ch{pair}_image_rejection_dbc")
+                  value=round(usable, 1), key=f"{tag}_image_rejection_dbc")
     else:
         rep.check(g, "image rejection", imr > 35,
                   f"{imr:.1f} dBc (image at {-loop.f_off/1e3:.0f} kHz is "
                   f"{image:.1f} dBFS, floor {floor:.1f}). Below ~35 dBc points "
                   f"at the quadrature calibration or an unbalanced mixer.",
                   warn=imr > 25, value=round(imr, 1),
-                  key=f"ch{pair}_image_rejection_dbc")
+                  key=f"{tag}_image_rejection_dbc")
 
     # -- harmonic distortion ------------------------------------------------
     h2 = spec.peak_near(2 * loop.f_off, fs) - level
@@ -1019,7 +1029,7 @@ def test_loopback(b, rep, args, pair=0):
                f"{-usable:.1f} dBc" if buried else
                f"2nd {h2:.1f} dBc, 3rd {h3:.1f} dBc at {level:.1f} dBFS"),
               warn=worst < -30, value={"h2": round(h2, 1), "h3": round(h3, 1)},
-              key=f"ch{pair}_harmonics_dbc")
+              key=f"{tag}_harmonics_dbc")
 
     # -- TX attenuator linearity --------------------------------------------
     # Sweep quieter only - never towards full output - and check the received
@@ -1061,7 +1071,7 @@ def test_loopback(b, rep, args, pair=0):
                   f"{slope:.3f} dB per dB over {span:.0f} dB "
                   f"(worst deviation {dev:.2f} dB); ideal is 1.000",
                   value={"slope": round(slope, 4), "max_dev_db": round(dev, 2)},
-                  key=f"ch{pair}_tx_atten_linearity")
+                  key=f"{tag}_tx_atten_linearity")
 
     # -- RX gain: does it respond, and is it linear where it can be? --------
     #
@@ -1101,7 +1111,7 @@ def test_loopback(b, rep, args, pair=0):
                   f"commanded ({delivered/commanded:.2f} dB per dB overall); "
                   f"largest backward step {worst_back:+.1f} dB at a gain-table "
                   f"transition. Both are normal for this chip.",
-                  value=round(delivered, 1), key=f"ch{pair}_rx_gain_range_db")
+                  value=round(delivered, 1), key=f"{tag}_rx_gain_range_db")
 
     fine = []
     for gain in (38.0, 42.0, 46.0, 50.0):
@@ -1121,7 +1131,7 @@ def test_loopback(b, rep, args, pair=0):
                   f"{fine[-1][0]-fine[0][0]:.0f} dB in the 38-51 dB window "
                   f"(worst deviation {dev:.2f} dB)",
                   value={"slope": round(slope, 4), "max_dev_db": round(dev, 2)},
-                  key=f"ch{pair}_rx_gain_linearity")
+                  key=f"{tag}_rx_gain_linearity")
     else:
         rep.add(g, "RX gain is linear where the table is honest", WARN,
                 f"only {len(fine)} usable points in the 38-51 dB window at "
@@ -1154,7 +1164,7 @@ def test_loopback(b, rep, args, pair=0):
                 f"flat out{note}. Looping that back with no attenuator would "
                 f"put {headroom:+.0f} dB relative to the "
                 f"{RX_MAX_INPUT_DBM:+.1f} dBm the receive port survives.",
-                value=round(p_tx_real, 1), key=f"ch{pair}_tx_power_max_dbm")
+                value=round(p_tx_real, 1), key=f"{tag}_tx_power_max_dbm")
 
     loop.set_levels(atten=base_atten, rx_gain=base_gain)
 
@@ -1167,7 +1177,7 @@ def test_loopback(b, rep, args, pair=0):
               f"tone fell {drop:.1f} dB to {quiet:.1f} dBFS "
               f"(floor {quiet_spec.floor():.1f} dBFS) once the buffer closed "
               f"and the attenuators went to {TX_ATTEN_MUTE} dB",
-              warn=drop > 35, value=round(drop, 1), key=f"ch{pair}_tx_mute_depth_db")
+              warn=drop > 35, value=round(drop, 1), key=f"{tag}_tx_mute_depth_db")
 
     # -- path loss across the tuning range -----------------------------------
     points = sweep_points(args)
@@ -1189,7 +1199,7 @@ def test_loopback(b, rep, args, pair=0):
             curve[int(f)] = None
             rep.add(g, f"path loss at {f/1e6:.0f} MHz", WARN, str(exc))
     loop.stop()
-    rep.data[f"ch{pair}_path_loss_curve"] = curve
+    rep.data[f"{tag}_path_loss_curve"] = curve
 
     if loop.drifted:
         known = sum(1 for d in loop.drifted
@@ -1556,6 +1566,14 @@ def build_parser():
                    help="which TX/RX pair the loop is on. 'both' runs channel "
                         "0, then asks you to move the cable to TX2/RX2 "
                         "(default: %(default)s)")
+    p.add_argument("--tx-channel", type=int, choices=(0, 1), metavar="N",
+                   help="transmit on this pair instead of --channel. With "
+                        "--rx-channel this measures a CROSSED loop, which is "
+                        "what separates the transmit chain from the receive "
+                        "chain: a straight loopback only ever measures their "
+                        "sum")
+    p.add_argument("--rx-channel", type=int, choices=(0, 1), metavar="N",
+                   help="receive on this pair instead of --channel")
     p.add_argument("--pad", type=float, metavar="DB",
                    help="how much attenuation is in the loopback cable, dB. "
                         "Asked for interactively if not given. Needed to "
@@ -1636,7 +1654,13 @@ def main(argv=None):
         test_receiver(board, rep, args.quick)
 
         if args.loopback:
-            pairs = [0, 1] if args.channel == "both" else [int(args.channel)]
+            if args.tx_channel is not None or args.rx_channel is not None:
+                tx = args.tx_channel if args.tx_channel is not None else int(args.channel)
+                rx = args.rx_channel if args.rx_channel is not None else int(args.channel)
+                test_loopback(board, rep, args, tx, rx)
+                pairs = []
+            else:
+                pairs = [0, 1] if args.channel == "both" else [int(args.channel)]
             for i, pair in enumerate(pairs):
                 if i:
                     if sys.stdin.isatty():

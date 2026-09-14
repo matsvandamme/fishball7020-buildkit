@@ -142,6 +142,56 @@ record with your own cable** rather than against absolute thresholds. Below
 2 GHz the three cable configurations agreed to 1–2 dB, so a measurement there is
 genuinely about the board.
 
+## Which chain is it? Separating transmit from receive
+
+A loopback measures a **product**: the transmit chain and the receive chain of
+one channel, added. Nothing in a straight loopback can say which of the two an
+asymmetry belongs to. Measuring a **crossed** loop as well makes the differences
+solvable:
+
+```
+L00 = T0 + R0     straight, channel 0
+L11 = T1 + R1     straight, channel 1
+L01 = T0 + R1     crossed, TX0 into RX1
+
+  R0 − R1 = L00 − L01          T0 − T1 = L01 − L11
+```
+
+Absolute `T` and `R` stay unknown — three equations, four unknowns, and no
+amount of loopback fixes that without an external calibrated reference. But the
+differences are fully determined, and they are what the questions turn on.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/chain-separation-dark.svg">
+  <img alt="Channel difference against frequency, split into receive and transmit contributions. The receive difference sits near -1.5 dB and steps down by 2.55 dB at 4 GHz. The transmit difference stays near zero throughout, including across 4 GHz." src="img/chain-separation-light.svg">
+</picture>
+
+**The two transmitters are nearly identical.** `T0 − T1` sits at **+0.23 dB**
+below 4 GHz and +0.65 dB above — flat, within the measurement's own scatter.
+
+**The receivers are not.** `R0 − R1` is **−1.46 dB** below 4 GHz: channel 1's
+receive chain is about 1.5 dB more sensitive. So the +1.8 dB by which channel 1's
+loop runs hotter is **the receiver, not the transmitter** — which a straight
+loopback could never have told you.
+
+**And it locates the 4 GHz step.** Earlier the step was attributed to the AD9361
+swapping RX gain table. That is a falsifiable claim: if true, the step must
+appear in the receive difference and *not* in the transmit difference, because a
+transmitter knows nothing about an RX gain table. Across 4 GHz:
+
+| | change across 4 GHz |
+|---|---|
+| `R0 − R1` | **−2.55 dB** |
+| `T0 − T1` | **+0.42 dB** |
+
+The step is in the receiver, and the transmitters barely move. It could have come
+out the other way; it did not.
+
+```bash
+./sdr_selftest.py --loopback --pad 20 --tx-channel 0 --rx-channel 1 \
+    --sweep-points 60 --sweep-start 70e6 --sweep-stop 6e9
+```
+
 ## How well the tool knows your attenuator
 
 The self-test infers how much attenuation is in the loop and checks it against
