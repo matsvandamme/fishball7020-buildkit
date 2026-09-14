@@ -284,7 +284,7 @@ fileset yet — `adi_fir_filter_bd.tcl` does the same), then
 **Add an AXI peripheral of your own.** `ad_ip_instance` it, `ad_cpu_interconnect
 <base> <name>` to put it on the control fabric at a free address (e.g.
 `0x7C44_0000`), `ad_cpu_interrupt ps-N mb-N <name>/irq` if it needs one
-(ps-10 down to ps-0 are free), and **add a device-tree node** with matching
+(ps-14, and ps-10 down to ps-0, are free — 11, 12, 13 and 15 are taken), and **add a device-tree node** with matching
 `reg` and `compatible`, or Linux won't know it exists. Your userspace then
 talks to it via UIO or a small driver.
 
