@@ -40,6 +40,9 @@ jobs:
           grep -q cf_axi_dds_tx_rf_mute firmware/src/linux/drivers/iio/frequency/cf_axi_dds.c
           grep -q ad9361_tx_lo_powerdown firmware/src/linux/drivers/iio/adc/ad9361.h
           grep -q 'mac_seed=' firmware/src/buildroot/board/pluto/S23udc
+          grep -q ad9361_tx_is_muted firmware/src/linux/drivers/iio/adc/ad9361.h
+          grep -q 'ad9361_tx_is_muted(phy) && ad9361_tx_mute' \
+            firmware/src/linux/drivers/iio/frequency/cf_axi_dds.c
       # setup.sh deliberately skips patches/optional/. Check they still apply
       # anyway, so a worked example cannot rot against upstream unnoticed.
       - name: Confirm optional patches still apply cleanly

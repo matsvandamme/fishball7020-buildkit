@@ -826,6 +826,7 @@ fishball7020-fpga-devkit/
     │   ├── 0001-fishball7020-fixes.patch        6 real fixes + a persistent hw_serial (see firmware README)
     │   ├── 0002-add-fishball-devicetree.patch   the board's actual device tree, as source
     │   ├── 0004-mute-tx-when-no-dma-stream.patch TX safeguard (see Transmitter safety)
+    │   ├── 0005-dont-clobber-a-gain-set-before-streaming.patch  the unmute stops overwriting your gain
     │   └── optional/                             NOT applied by setup.sh — worked examples
     │       └── 0003-wbfm-channelizer.patch      the FM channelizer (docs/wbfm-channelizer.md)
     ├── scripts/
@@ -878,13 +879,32 @@ hooks the TX buffer lifecycle the DAC driver already has:
 | Event | What happens |
 |---|---|
 | boot (`S21misc`) | TX attenuated to maximum, so the board is quiet before anything streams |
-| a TX buffer starts streaming | TX unmuted, restoring **your** attenuation |
+| a TX buffer starts streaming | TX unmuted — your gain if you set one, otherwise the last one you used |
 | the buffer stops | TX muted again and the TX synthesiser powered down, automatically |
 
 It works by calling `ad9361_tx_mute()`, ADI's own exported helper, which was
 present in the kernel tree but called from nowhere. It caches both channels'
 attenuation and restores exactly what was there, so a transmit gain you chose
 survives a stream.
+
+**Set the gain whenever you like.** `patches/0005` exists because restoring
+that cache *unconditionally* was itself a trap: setting a gain and then
+starting the stream is the obvious order, and the unmute would overwrite it a
+moment later with the value cached at the end of the *previous* transmission.
+Asking for −10 dB could put −60 dB on the wire, with nothing to say why. The
+unmute now restores the cache only when nothing has been set since the mute, so
+both orders work:
+
+| What you do | What you get |
+|---|---|
+| set a gain, then start the stream | the gain you set |
+| start the stream having set nothing | the last gain you used |
+
+If you have a watchdog script polling `buffer/enable` to re-apply a gain — a
+common workaround for exactly this — you no longer need it. Check
+`/mnt/jffs2/autorun.sh`; that partition is persistent, so such a script
+survives reflashing and will keep overriding your application's gain.
+`tools/selftest/sdr_selftest.py --ssh` lists what is there.
 
 The part that makes this a guarantee rather than best effort: the IIO core runs
 the buffer's `postdisable` hook on teardown **even when the application crashed

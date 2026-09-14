@@ -1,0 +1,85 @@
+Don't overwrite a transmit gain that was set before the stream started
+
+patches/0004 mutes the transmitter whenever no DMA buffer is streaming and
+unmutes when one starts, restoring the attenuation ad9361_tx_mute() cached
+at the previous mute. Restoring unconditionally is the problem: setting a
+gain and then starting the stream is the obvious order, and it is the order
+most tools use, but the unmute then overwrites that gain a moment later
+with a value cached at the end of the PREVIOUS transmission. Measured on
+hardware: asking for -10 dB put -60 dB on the wire.
+
+The workarounds people reach for - re-applying the gain after the stream
+has started, or a watchdog script polling buffer/enable and writing a gain
+of its own - are both symptoms of this, and the second is worse than the
+disease: it applies a fixed gain to both channels a second or two after
+any stream starts, overriding the application silently. On a board with the
+PGA-102+ power amplifier fitted, the 10 dB such scripts commonly use is
+roughly +13 dBm at the SMA, against a receive port rated to +2.5 dBm.
+
+So restore the cached gain only when nobody has set one since the mute.
+That keeps what is useful about it - start a stream having set nothing, and
+your last gain comes back - and drops the surprise. ad9361_tx_is_muted()
+is the test, exported alongside ad9361_tx_mute() which it sits next to.
+
+--- a/linux/drivers/iio/adc/ad9361.c
++++ b/linux/drivers/iio/adc/ad9361.c
+@@ -1311,6 +1311,20 @@
+ }
+ EXPORT_SYMBOL(ad9361_tx_mute);
+ 
++/**
++ * ad9361_tx_is_muted - are both transmit attenuators still at full attenuation?
++ *
++ * Lets a caller tell "nobody has touched the gain since we muted" apart from
++ * "the application has set one of its own since". That is the difference
++ * between restoring a cached gain being helpful and it being destructive.
++ */
++bool ad9361_tx_is_muted(struct ad9361_rf_phy *phy)
++{
++	return ad9361_get_tx_atten(phy, 1) == MAX_TX_ATTENUATION_DB &&
++	       ad9361_get_tx_atten(phy, 2) == MAX_TX_ATTENUATION_DB;
++}
++EXPORT_SYMBOL(ad9361_tx_is_muted);
++
+ static int ad9361_trx_ext_lo_control(struct ad9361_rf_phy *phy,
+ 				     bool tx, bool enable)
+ {
+--- a/linux/drivers/iio/adc/ad9361.h
++++ b/linux/drivers/iio/adc/ad9361.h
+@@ -180,6 +180,7 @@
+ 			   enum dig_tune_flags flags);
+ int ad9361_tx_mute(struct ad9361_rf_phy *phy, u32 state);
+ int ad9361_tx_lo_powerdown(struct ad9361_rf_phy *phy, bool powerdown);
++bool ad9361_tx_is_muted(struct ad9361_rf_phy *phy);
+ int ad9361_write_bist_reg(struct ad9361_rf_phy *phy, u32 val);
+ bool ad9361_uses_rx2tx2(struct ad9361_rf_phy *phy);
+ bool ad9361_axi_half_dac_rate(struct ad9361_rf_phy *phy);
+--- a/linux/drivers/iio/frequency/cf_axi_dds.c
++++ b/linux/drivers/iio/frequency/cf_axi_dds.c
+@@ -1121,7 +1121,25 @@
+ 		ad9361_tx_lo_powerdown(phy, true);
+ 	} else {
+ 		ad9361_tx_lo_powerdown(phy, false);
+-		if (ad9361_tx_mute(phy, 0))
++		/*
++		 * Restore the cached attenuation ONLY if nobody has set one
++		 * since we muted.
++		 *
++		 * Setting a gain and then starting the stream is the obvious
++		 * order, and it is the order most tools use. Restoring
++		 * unconditionally overwrites that gain a moment later with a
++		 * value cached at the end of the PREVIOUS transmission - so
++		 * asking for -10 dB could put -60 dB on the wire, with nothing
++		 * to say why. The usual workarounds are to re-apply the gain
++		 * after the stream has started, or a watchdog script polling
++		 * buffer/enable to write a gain of its own; both are symptoms
++		 * of this.
++		 *
++		 * Checking first keeps the convenience - start a stream having
++		 * set nothing, and your last gain comes back - without the
++		 * surprise.
++		 */
++		if (ad9361_tx_is_muted(phy) && ad9361_tx_mute(phy, 0))
+ 			return;
+ 	}
+ 
