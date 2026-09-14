@@ -20,13 +20,18 @@ linearity over the TX attenuator and the RX gain range, path loss across the
 tuning range, image rejection, harmonic distortion, and how quiet the
 transmitter really is when it is supposed to be off.
 
-    TX1 ---[ 20 or 30 dB pad ]--- RX1
+    TX1 ---[ 20 dB + 30 dB pad ]--- RX1        and TX2 ---[ pad ]--- RX2
 
-Use at least 20 dB. The AD9361's receive input is rated to about +2.5 dBm and
-its transmitter reaches about +7 dBm at full output, so a bare cable can
-overdrive it. This script never starts loud: it begins at 40 dB of TX
-attenuation, measures the loop, and only then works out how hard it may
-drive. It refuses to go anywhere near full scale on the receiver.
+Use at least 20 dB, and understand why: the receive input is rated to about
++2.5 dBm, and this board is sold in a variant carrying a PGA-102+ power
+amplifier that delivers roughly +18.5 dBm - some 16 dB above what its own
+receiver survives. A loopback with no attenuator in it will damage the board.
+Sizing for a bare AD9361, as most Pluto advice does, is wrong by 10-18 dB here.
+
+This script never starts loud: it begins at 50 dB of TX attenuation, measures
+the loop, and only then works out how hard it may drive - never below 35 dB,
+which holds it under -16 dBm even into a bare cable. It refuses to go anywhere
+near full scale on the receiver. But it can only protect you from itself.
 
 WHAT "PASS" MEANS. Some checks are absolute - a supply rail is in spec or it
 is not, and a slope that should be 1.00 dB/dB either is or is not. Others,
