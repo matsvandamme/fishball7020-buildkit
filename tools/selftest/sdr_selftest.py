@@ -509,6 +509,17 @@ TX_DIGITAL_DBFS = 20 * math.log10(TX_AMPLITUDE / TX_FULL_SCALE)
 SWEEP_FS = 4_000_000
 
 
+# No real measurement through an RF loop has more than ~120 dB of range: the
+# receiver's own noise sets the floor long before that. A larger figure means
+# the "noise" bins are empty - a synthetic or digital-loopback path - so cap it
+# rather than print a number like 300 dBc that no radio could produce.
+DB_DISPLAY_CAP = 120.0
+
+
+def _cap(value):
+    return min(value, DB_DISPLAY_CAP)
+
+
 def _system_gain(rx_dbfs, atten_db, rx_gain_db):
     """Loop transfer normalised for both programmable gains, in dB.
 
@@ -617,7 +628,7 @@ def test_loopback(b, rep, args):
     loop.start()
     spec, level = loop.autorange()
     floor = spec.floor()
-    snr = level - floor
+    snr = _cap(level - floor)
 
     if snr < 12:
         loop.stop()
@@ -641,7 +652,14 @@ def test_loopback(b, rep, args):
             value=round(sysg, 2), key="system_gain_db")
     rep.data["implied_pad_db"] = round(pad, 1)
 
-    if pad < 12:
+    if pad < 0:
+        rep.add(g, "attenuator check", WARN,
+                f"the loop shows {-pad:.0f} dB MORE gain than a passive cable "
+                f"can explain. Either something in the path is amplifying, or "
+                f"this is not an RF loop at all - the AD9361's internal digital "
+                f"loopback looks exactly like this. Check "
+                f"/sys/kernel/debug/iio/iio:device0/loopback reads 0.")
+    elif pad < 12:
         rep.add(g, "attenuator check", WARN,
                 f"only about {pad:.0f} dB of external attenuation. This script "
                 f"stays below -13 dBm so nothing is at risk, but fit at least "
@@ -649,7 +667,7 @@ def test_loopback(b, rep, args):
 
     # -- image rejection ----------------------------------------------------
     image = spec.peak_near(-loop.f_off, fs)
-    imr = level - image
+    imr = _cap(level - image)
     rep.check(g, "image rejection", imr > 35,
               f"{imr:.1f} dBc (image at {-loop.f_off/1e3:.0f} kHz is "
               f"{image:.1f} dBFS). Below ~35 dBc points at the quadrature "
@@ -657,8 +675,8 @@ def test_loopback(b, rep, args):
               warn=imr > 25, value=round(imr, 1), key="image_rejection_dbc")
 
     # -- harmonic distortion ------------------------------------------------
-    h2 = spec.peak_near(2 * loop.f_off, fs) - level
-    h3 = spec.peak_near(3 * loop.f_off, fs) - level
+    h2 = max(spec.peak_near(2 * loop.f_off, fs) - level, -DB_DISPLAY_CAP)
+    h3 = max(spec.peak_near(3 * loop.f_off, fs) - level, -DB_DISPLAY_CAP)
     worst = max(h2, h3)
     rep.check(g, "harmonic distortion", worst < -40,
               f"2nd {h2:.1f} dBc, 3rd {h3:.1f} dBc at {level:.1f} dBFS",
@@ -672,15 +690,27 @@ def test_loopback(b, rep, args):
     pts = []
     for step in (0, 5, 10, 15, 20, 25):
         loop.set_levels(atten=base_atten + step)
-        _, lv = loop.measure(8192)
-        pts.append((loop.atten, lv))
+        lv = loop.measure(8192)[1]
+        if not pts or loop.atten != pts[-1][0]:      # clamped: stop, do not repeat
+            pts.append((loop.atten, lv))
     loop.set_levels(atten=base_atten)
-    slope, dev = _fit_slope([-a for a, _ in pts], [v for _, v in pts])
-    rep.check(g, "TX attenuator is linear", 0.94 <= slope <= 1.06 and dev < 1.5,
-              f"{slope:.3f} dB per dB over {pts[-1][0]-pts[0][0]:.0f} dB "
-              f"(worst deviation {dev:.2f} dB); ideal is 1.000",
-              value={"slope": round(slope, 4), "max_dev_db": round(dev, 2)},
-              key="tx_atten_linearity")
+    span = pts[-1][0] - pts[0][0] if len(pts) > 1 else 0.0
+    if span < 10:
+        # Every step clamped, so there is nothing to fit. Say that rather than
+        # report a slope of zero as if the attenuator were broken.
+        rep.add(g, "TX attenuator is linear", WARN,
+                f"could not vary TX attenuation over more than {span:.0f} dB "
+                f"(sitting at {base_atten:.0f} dB against the "
+                f"{loop.min_atten:.0f}-60 dB limits), so linearity was not "
+                f"measured. More attenuation in the cable would give room.")
+    else:
+        slope, dev = _fit_slope([-a for a, _ in pts], [v for _, v in pts])
+        rep.check(g, "TX attenuator is linear",
+                  0.94 <= slope <= 1.06 and dev < 1.5,
+                  f"{slope:.3f} dB per dB over {span:.0f} dB "
+                  f"(worst deviation {dev:.2f} dB); ideal is 1.000",
+                  value={"slope": round(slope, 4), "max_dev_db": round(dev, 2)},
+                  key="tx_atten_linearity")
 
     # -- RX gain linearity ---------------------------------------------------
     pts = []
@@ -688,18 +718,25 @@ def test_loopback(b, rep, args):
         if not 0 <= gain <= 70:
             continue
         loop.set_levels(rx_gain=gain)
-        _, lv = loop.measure(8192)
+        lv = loop.measure(8192)[1]
         if lv > MAX_RX_DBFS:                          # keep out of compression
+            continue
+        if pts and loop.rx_gain == pts[-1][0]:        # clamped against a limit
             continue
         pts.append((loop.rx_gain, lv))
     loop.set_levels(rx_gain=base_gain)
-    if len(pts) >= 3:
+    span = pts[-1][0] - pts[0][0] if len(pts) > 1 else 0.0
+    if len(pts) >= 3 and span >= 15:
         slope, dev = _fit_slope([gn for gn, _ in pts], [v for _, v in pts])
         rep.check(g, "RX gain is linear", 0.90 <= slope <= 1.10 and dev < 2.0,
-                  f"{slope:.3f} dB per dB over {pts[-1][0]-pts[0][0]:.0f} dB "
+                  f"{slope:.3f} dB per dB over {span:.0f} dB "
                   f"(worst deviation {dev:.2f} dB)",
                   value={"slope": round(slope, 4), "max_dev_db": round(dev, 2)},
                   key="rx_gain_linearity")
+    else:
+        rep.add(g, "RX gain is linear", WARN,
+                f"only {span:.0f} dB of usable RX gain range at this signal "
+                f"level, so linearity was not measured.")
 
     # -- how quiet is "off"? -------------------------------------------------
     # Stop the stream and mute, then look again at the same bin. This is the
@@ -708,7 +745,7 @@ def test_loopback(b, rep, args):
     loop.stop()
     time.sleep(0.2)
     quiet_spec, quiet = loop.measure()
-    drop = level - quiet
+    drop = _cap(level - quiet)
     rep.check(g, "transmitter goes quiet when stopped", drop > 50,
               f"tone fell {drop:.1f} dB to {quiet:.1f} dBFS "
               f"(floor {quiet_spec.floor():.1f} dBFS) once the buffer closed "
