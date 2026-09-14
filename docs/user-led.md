@@ -126,7 +126,7 @@ Then rebuild, and capture it as a patch so it survives a clean `setup.sh`:
 ```bash
 # run from: firmware/src
 git diff linux/arch/arm/boot/dts/zynq-pluto-sdr-fishball.dts \
-    > ../patches/0003-led-default-off.patch
+    > ../patches/0005-led-default-off.patch
 ```
 
 Other useful values are `timer`, `mmc0`, or `default-on`.

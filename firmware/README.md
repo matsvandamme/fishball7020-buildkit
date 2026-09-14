@@ -45,6 +45,17 @@ Firmware/` dump pulled from a real unit:
   PlutoSDR Rev.A (Z7020-AD9361)` over both the serial console login
   banner and `iio_info` — see the root README's
   [verification step](../README.md#7-verify-your-build-is-actually-running).
+- **Confirmed on real hardware** (2026-09-14), current `patches/`: the TX
+  safeguard holds across the full cycle — attenuated at boot, the user's gain
+  preserved while a stream runs, attenuated *and* synthesiser powered down
+  after it stops, and again on a second stream. Over a 50 dB attenuated
+  TX→RX loopback, commanded and applied attenuation matched to 0.01 dB at
+  every point including 0 dB, so full output is unaffected. The persistent
+  serial survives a reboot unchanged while the gadget MAC and interface name
+  stay exactly as before, and SDRangel opens and streams from the board on
+  both `usb:` and `ip:`. The optional channelizer's filter response was
+  measured through the same loopback (flat to the 100 kHz edge, into the
+  noise floor by 175 kHz) before it was made opt-in.
 
 ## What's in `patches/`
 
