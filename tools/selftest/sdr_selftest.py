@@ -371,6 +371,14 @@ class Board:
 # way round.
 #
 MIN_TX_ATTEN_DB = 35.0          # never transmit with less attenuation than this
+# Quietest the sweeps may go. The AD9361 offers 89.75 dB, but that exact value
+# is what the mute uses, so stopping short of it keeps "attenuated" and "muted"
+# distinguishable in a read-back. The ceiling has to be well above the floor or
+# the linearity sweep has no room: with a single 30 dB pad the loop is strong
+# enough that autoranging sits near 52 dB, and a 60 dB ceiling left only 8 dB
+# of the 25 the sweep needs - so the measurement was silently skipped for
+# exactly the setup most people have.
+MAX_TX_ATTEN_DB = 80.0
 START_TX_ATTEN_DB = 50.0        # where every loopback measurement begins
 PA_GAIN_DB = 18.0               # PGA-102+ worst case, used only for the budget
 AD9361_TX_MAX_DBM = 7.0         # at 0 dB attenuation, full-scale digital
@@ -695,7 +703,7 @@ class Loop:
         bad value becomes the new target, and the test then chases it.
         """
         if atten is not None:
-            self.atten = round(min(60.0, max(self.min_atten, atten)) * 4) / 4
+            self.atten = round(min(MAX_TX_ATTEN_DB, max(self.min_atten, atten)) * 4) / 4
             self.b.set_tx_atten(-self.atten, self.pair)
         if rx_gain is not None:
             self.rx_gain = float(round(min(self.gain_hi,
@@ -755,7 +763,7 @@ class Loop:
             if abs(err) < 2.0:
                 break
             want = self.atten - err
-            new_atten = min(60.0, max(self.min_atten, want))
+            new_atten = min(MAX_TX_ATTEN_DB, max(self.min_atten, want))
             gained = self.atten - new_atten
             self.set_levels(atten=new_atten)
             err -= gained
@@ -812,7 +820,7 @@ class Loop:
         """
         rx_gain = min(self.gain_hi, max(self.gain_lo, rx_gain))
         want = sysg + TX_DIGITAL_DBFS + rx_gain - target
-        atten = min(60.0, max(self.min_atten, want))
+        atten = min(MAX_TX_ATTEN_DB, max(self.min_atten, want))
         self.set_levels(atten=atten, rx_gain=rx_gain)
         return abs(atten - want) < 6.0
 
@@ -938,7 +946,7 @@ def test_loopback(b, rep, args, pair=0):
     else:
         rep.add(g, "operating point", INFO,
                 f"could not reach {TARGET_RX_DBFS:.0f} dBFS at 46 dB RX gain "
-                f"within the {loop.min_atten:.0f}-60 dB attenuation range; "
+                f"within the {loop.min_atten:.0f}-{MAX_TX_ATTEN_DB:.0f} dB attenuation range; "
                 f"measuring at {loop.atten:.0f} dB / {loop.rx_gain:.0f} dB "
                 f"instead, so these figures are less comparable than usual.")
         spec, level = loop.measure()
@@ -1023,7 +1031,7 @@ def test_loopback(b, rep, args, pair=0):
         rep.add(g, "TX attenuator is linear", WARN,
                 f"could not vary TX attenuation over more than {span:.0f} dB "
                 f"(sitting at {base_atten:.0f} dB against the "
-                f"{loop.min_atten:.0f}-60 dB limits), so linearity was not "
+                f"{loop.min_atten:.0f}-{MAX_TX_ATTEN_DB:.0f} dB limits), so linearity was not "
                 f"measured. More attenuation in the cable would give room.")
     else:
         slope, dev = _fit_slope([-a for a, _ in pts], [v for _, v in pts])
@@ -1050,7 +1058,7 @@ def test_loopback(b, rep, args, pair=0):
     # with no transition in it in any band.
     lo, hi = loop.gain_lo, loop.gain_hi
     want_atten = sysg + TX_DIGITAL_DBFS + min(hi, 60.0) - TARGET_RX_DBFS
-    loop.set_levels(atten=min(60.0, max(loop.min_atten, want_atten)))
+    loop.set_levels(atten=min(MAX_TX_ATTEN_DB, max(loop.min_atten, want_atten)))
 
     coarse = []
     for gain in (10.0, 20.0, 30.0, 40.0, 50.0, 60.0):
