@@ -72,8 +72,16 @@ flashed), and not comparing md5sums.
 ## After flashing
 
 ```bash
-python3 ../tools/selftest/sdr_selftest.py --ssh              # never transmits
-python3 ../tools/selftest/sdr_selftest.py --ssh --loopback --pad 50
+python3 ../tools/selftest/sdr_selftest.py --ssh                        # never transmits
+python3 ../tools/selftest/sdr_selftest.py --ssh --loopback --pad 30    # + RF, needs a cable
+```
+
+Denser frequency data, or a crossed loop that separates the transmit chain from
+the receive chain — see `measuring.md`:
+
+```bash
+--sweep-points 60 --sweep-start 70e6 --sweep-stop 6e9
+--tx-channel 0 --rx-channel 1
 ```
 
 ## Recovering

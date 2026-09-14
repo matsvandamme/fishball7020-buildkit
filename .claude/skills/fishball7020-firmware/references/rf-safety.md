@@ -13,9 +13,9 @@ strongly frequency dependent:
 |---|---|---|---|---|---|---|
 | **Gain (dB)** | **17.7** | 15.9 | 14.0 | 12.5 | 11.5 | 10.4 |
 
-P1dB is about +17.5 dBm. Measured on a PA-equipped unit at 900 MHz through a
-50 dB pad: **+18.5 dBm flat out**, roughly **16 dB above what its own receive
-port survives**.
+P1dB is about +17.5 dBm. Measured on a PA-equipped unit at 900 MHz, consistent
+to 0.7 dB across six runs and three attenuator values: **+19 dBm flat out**,
+roughly **16 dB above what its own receive port survives**.
 
 Sizing a loopback for a bare AD9361 (+7 dBm) is therefore wrong by 10-18 dB,
 and most Pluto advice on the internet does exactly that.
@@ -50,6 +50,14 @@ unmutes when one starts. `patches/0005` makes that unmute non-destructive:
 The `postdisable` hook runs even if the application crashed, because teardown
 happens on file close — which is why this is a guarantee and a userspace
 watchdog is not.
+
+**Both mechanisms earn their place.** Measured at 900 MHz with the receive LO
+offset by 1 MHz, so leakage could be told apart from the receiver's own DC
+offset: muting the attenuators alone leaves residual LO **26 dB above the noise
+floor**; powering the synthesiser down as well takes it a further **19.9 dB**,
+to within 6 dB of the floor — about −89 dBm at the port. Neither is sufficient
+alone, and measuring at DC will not show you this, because RX LO = TX LO puts
+the leakage exactly where the receiver's own offset lives.
 
 If you find a script polling `buffer/enable` to re-apply a gain, it is a
 workaround for the pre-0005 behaviour and should be deleted; it overrides the

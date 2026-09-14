@@ -68,12 +68,15 @@ required either way.
 
 ## What you get
 
-- **Agent Skills** in [`.claude/skills/`](.claude/skills/fishball7020-firmware/SKILL.md) —
-  if you use Claude Code, the workflow rules below (flash via SD only, delete
-  the Vivado project before an HDL change, the PA power budget, check
-  `/mnt/jffs2` first) load automatically when you work in this repo. Written to
-  the [Agent Skills spec](https://agentskills.io/specification); harmless if
-  you don't use an agent.
+- **An Agent Skill** in [`.claude/skills/`](.claude/skills/fishball7020-firmware/SKILL.md) —
+  if you use Claude Code it loads automatically when you work in this repo, and
+  carries the things that are expensive to rediscover: the flashing rules, the
+  PA power budget, the AD9361 gain tables and where their discontinuities are,
+  how to measure the board and which numbers are properties of your *cable*,
+  the libiio and busybox gotchas, and a catalogue of traps that have each cost
+  hours here. Written to the [Agent Skills spec](https://agentskills.io/specification);
+  copy it to `~/.claude/skills/` to use it from another project, and harmless if
+  you don't use an agent at all.
 - **A firmware build you can trust** — verified against a real unit:
   `devicetree.dtb` comes out byte-for-byte identical, the rootfs and
   bootloader environment content-identical.
@@ -819,8 +822,11 @@ fishball7020-fpga-devkit/
 ├── README.md                            ← you are here: the full build/flash workflow
 ├── LICENSE                              multiple licenses apply — see below
 │
-├── .claude/skills/                      ← Agent Skills: the rules above, loaded automatically
-│   └── fishball7020-firmware/           by Claude Code when you work in this repo
+├── .claude/skills/                      ← Agent Skill, loaded automatically by Claude Code
+│   └── fishball7020-firmware/
+│       ├── SKILL.md                     the rules, the map, what a healthy board measures
+│       └── references/                  gain tables · measuring · board access · debugging
+│                                        · RF safety · build and flash
 │
 ├── tools/
 │   ├── env-vivado.sh                    ← source this before any vivado/xsct/bootgen command
