@@ -147,6 +147,7 @@ login prompt — no prior knowledge assumed.
 - [The stock block design: IPs, wiring, and what you can change](docs/block-design.md)
 - [Worked example: an FM channelizer in the FPGA](docs/wbfm-channelizer.md)
 - [Transmitter safety](#transmitter-safety) — TX is muted when nothing is being sent
+- [Measured performance](docs/measured-performance.md) — what one board actually does, and what the numbers do not mean
 - [Simulating your HDL first](#simulating-your-hdl-first) — one second instead of twenty minutes
 - [Is the board healthy?](#is-the-board-healthy) — a self-test that measures, cable optional
 - [Controlling the USER LED](docs/user-led.md) — for custom projects
@@ -1011,6 +1012,38 @@ sign error in the −j quadrant, I and Q swapped in +j, `valid_out` unregistered
 
 If you add HDL of your own, add a testbench beside this one. It is the
 cheapest verification available here by a factor of about a thousand.
+
+## Measured performance
+
+One board, six runs — both channels, looped back through a 20 dB, a 30 dB and a
+50 dB attenuator. Measuring it three ways is what separates a property of the
+*board* from a property of the *cable*.
+
+| | |
+|---|---|
+| **Gain accuracy** | 12 slope measurements, every one within **1.4% of unity** |
+| **Image rejection** | **55–63 dBc** after calibration (41–48 dBc as found) |
+| **Harmonic distortion** | **−67 to −79 dBc** |
+| **Transmit power** | **+19 dBm** flat out, agreeing to 0.7 dB across six runs |
+| **Transmit mute depth** | **63–70 dB**, into the noise floor |
+| **FPGA headroom** | 72 of 220 DSP48s used, timing met with **+0.214 ns** to spare |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/loop-gain-dark.svg">
+  <img alt="TX to RX loop gain against frequency for both channels, 100 MHz to 5 GHz. Both peak near +20 dB around 300-700 MHz and roll off to +5 to +9 dB at 5 GHz. A shaded band shows the spread across three attenuator values: about 1-2 dB below 2 GHz, widening to 6-8 dB at 5 GHz." src="docs/img/loop-gain-light.svg">
+</picture>
+
+The gain figure is the one that matters in practice: **a link budget you compute
+is the one you get.** Ask for 6 dB less and you get 6.0, not 5.2.
+
+The spread in that plot is the second result. Below 2 GHz the three cable
+configurations agree to 1–2 dB, so a measurement there is about the board. At
+5 GHz they disagree by 6–8 dB — SMA connector repeatability across three
+recablings, not the board changing. That is why the self-test compares against a
+baseline you record with your own cable rather than against absolute thresholds.
+
+Full tables, method and caveats — including what these numbers are *not* — in
+**[docs/measured-performance.md](docs/measured-performance.md)**.
 
 ## Is the board healthy?
 

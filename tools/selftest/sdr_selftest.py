@@ -644,9 +644,14 @@ def _implied_pad_db(system_gain, freq_hz, with_pa=True):
 
     Getting the PA into this mattered: without it the model under-reads the
     pad by the PA's gain, so a correct 50 dB pad on a PA-equipped board
-    measured as 35 dB and the cross-check called it a fault. Still +/-3 dB -
-    enough to tell a 20 dB pad from a 50 dB one, or from a bare cable, which
-    is all it is for.
+    measured as 35 dB and the cross-check called it a fault.
+
+    Accuracy, measured over six runs at three known values (20, 30 and 50 dB):
+    errors of +1, -1, 0, -1, +4, +1 dB. So +/-4 dB, with the worst case at the
+    high-attenuation end where the loop is weakest and the estimate leans
+    hardest on the assumed constants. That is ample for what it is for -
+    telling a 20 dB pad from a 50 dB one, or from a bare cable - and the
+    cross-check only fires above 8 dB of disagreement.
     """
     reference = BARE_LOOP_GAIN_DB + (pa_gain_db(freq_hz) if with_pa else 0.0)
     return reference - system_gain
