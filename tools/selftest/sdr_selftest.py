@@ -372,26 +372,28 @@ AD9361_TX_MAX_DBM = 7.0         # at 0 dB attenuation, full-scale digital
 RX_MAX_INPUT_DBM = 2.5          # what the receive port survives
 PA_P1DB_DBM = 17.5              # PGA-102+ output at 1 dB compression
 
-# A firmware fault this tool works around, and reports rather than hides.
+# Something else on the board may be moving the transmit attenuator.
 #
-# With a TX DMA buffer streaming, changing the RX gain occasionally resets the
-# transmit attenuation to 10 dB. Established by measurement:
+# The Pluto rootfs is a ramdisk, but /mnt/jffs2 is persistent and
+# /mnt/jffs2/autorun.sh runs at every boot - so a helper script put there
+# survives reflashing the kernel, the device tree and the bitstream, and does
+# not appear anywhere in the firmware source. A common one watches
+# <tx device>/buffer/enable and sets a working gain a second or two after a
+# stream starts, muting again when it stops:
 #
-#   * it never happens with the transmitter idle - only while a buffer streams;
-#   * no such write is ever sent by this tool (every libiio write was logged
-#     and correlated against the board's own view of the attenuator);
-#   * 10 dB is the AD9361 driver's probe-time default, applied by ad9361_setup()
-#     from adi,tx-attenuation-mdB. Overriding that value at runtime through
-#     debugfs does NOT change the value that appears, so it is being restored
-#     from a copy cached at probe - most likely tx1_atten_cached, which
-#     ad9361_tx_mute(phy, 0) restores and which is seeded while the hardware
-#     still holds the device-tree default;
-#   * it is a race, not a threshold: a different single gain value triggers it
-#     on each run.
+#     ACTIVE_GAIN="-10.000000"
+#     ... on 0 -> 1: sleep 2; iio_attr -o -c ad9361-phy voltage0 hardwaregain $ACTIVE_GAIN
 #
-# It matters because of the PA. Ten dB of attenuation is roughly +13 dBm on the
-# transmit port, on a board whose receive port is rated to +2.5 dBm.
-KNOWN_TX_ATTEN_RESET = 10.0
+# That is a reasonable thing to want and a genuinely confusing thing to debug:
+# it fires once per stream, only while streaming, seconds after the fact, and
+# at a value nothing in the kernel ever writes. It also silently overrides the
+# gain the application asked for - which matters on a board with the PGA-102+
+# fitted, where 10 dB of attenuation is roughly +13 dBm at the SMA against a
+# receive port rated to +2.5 dBm.
+#
+# So this tool re-reads the attenuator before every measurement, puts it back
+# if it has moved, and names /mnt/jffs2 in the report.
+COMMON_WATCHDOG_GAIN_DB = 10.0
 TARGET_RX_DBFS = -22.0          # aim the received tone here: loud, not clipping
 MAX_RX_DBFS = -6.0              # back off if anything gets nearer full scale
 
@@ -707,17 +709,16 @@ class Loop:
     def measure(self, n=16384, verify=True):
         """Capture and find the tone, checking the radio is still where we put it.
 
-        The read-back is not paranoia, it is load-bearing. On this firmware the
-        transmit attenuation occasionally resets itself to 10 dB - the AD9361
-        driver's probe-time default - with no userspace write to cause it. It
-        is reproducible: change the RX gain while a TX DMA buffer is streaming
-        and it happens every few dozen changes, at no fixed gain. It never
-        happens with the transmitter idle. See KNOWN_TX_ATTEN_RESET below.
+        The read-back is not paranoia, it is load-bearing. Boards in the field
+        run helper scripts from the persistent /mnt/jffs2 partition, and a
+        common one sets its own transmit gain a second or two after any stream
+        starts, overriding whatever the application asked for, invisibly. See
+        COMMON_WATCHDOG_GAIN_DB above.
 
         So every measurement confirms the settings still read back as
         commanded, re-asserts them if not, and counts it - which keeps the
-        numbers honest and makes the underlying fault visible instead of
-        silently corrupting a sweep.
+        numbers honest and makes the interference visible instead of silently
+        corrupting a sweep.
         """
         if verify:
             try:
@@ -1159,19 +1160,21 @@ def test_loopback(b, rep, args, pair=0):
 
     if loop.drifted:
         known = sum(1 for d in loop.drifted
-                    if f"TX attenuation {KNOWN_TX_ATTEN_RESET:.2f}" in d)
+                    if f"TX attenuation {COMMON_WATCHDOG_GAIN_DB:.2f}" in d)
         detail = (f"{len(loop.drifted)} time(s) the radio was not where it had "
                   f"been set; each was corrected before measuring. First: "
                   f"{loop.drifted[0]}")
         if known:
             detail += (f"\n           {known} of those was the transmit "
-                       f"attenuation resetting to {KNOWN_TX_ATTEN_RESET:.0f} dB, "
-                       f"the driver's probe-time default - a known firmware "
-                       f"fault, not a fault in your board. It only happens "
-                       f"while a TX buffer is streaming. With the PA that is "
-                       f"about +13 dBm on the port, so keep a pad in any "
-                       f"loopback and do not rely on the attenuator staying "
-                       f"where you put it.")
+                       f"attenuation to exactly {COMMON_WATCHDOG_GAIN_DB:.0f} dB, "
+                       f"which is not a value this tool ever writes. Something "
+                       f"else on the board is doing it: look in "
+                       f"/mnt/jffs2/autorun.sh and anything it starts. That "
+                       f"partition is persistent, so such a script survives "
+                       f"reflashing and appears nowhere in the firmware "
+                       f"source. Not a fault in your board - but with the PA "
+                       f"it is about +13 dBm on the port, and it overrides "
+                       f"any gain you set.")
         rep.add(g, "settings changed on their own", WARN, detail)
     else:
         rep.add(g, "settings held throughout", INFO,
@@ -1243,6 +1246,48 @@ class Shell:
             return self.run("echo ok", timeout=15).strip() == "ok"
         except Exception:
             return False
+
+
+def test_board_scripts(rep, sh):
+    """What is running on the board that might move settings under you?
+
+    /mnt/jffs2 is the one writable, persistent thing on this board, and
+    autorun.sh there runs at every boot. Anything it starts survives a reflash
+    of the kernel, device tree and bitstream, so it will not show up in the
+    firmware source however hard you look - and if it writes IIO attributes it
+    will silently override an application. Listing it costs one ssh command
+    and can save an afternoon.
+    """
+    g = "Board customisation"
+    try:
+        listing = sh.run("ls -A /mnt/jffs2 2>/dev/null; echo ---; "
+                         "cat /mnt/jffs2/autorun.sh 2>/dev/null")
+    except Exception as exc:
+        rep.add(g, "persistent partition", WARN, f"could not read: {exc}")
+        return
+    files, _, autorun = listing.partition("---")
+    files = [f for f in files.split() if f]
+    autorun = autorun.strip()
+    if not autorun:
+        rep.add(g, "no autorun.sh on the persistent partition", INFO,
+                f"/mnt/jffs2 holds: {', '.join(files) if files else 'nothing'}")
+        return
+    body = "\n           ".join(l for l in autorun.splitlines()
+                                if l.strip() and not l.strip().startswith("#"))
+    rep.add(g, "/mnt/jffs2/autorun.sh runs at every boot", INFO,
+            f"{body}\n           This partition is persistent: nothing here is "
+            f"part of the firmware, and reflashing will not change it.")
+    try:
+        writers = sh.run("grep -rlE 'hardwaregain|iio_attr|iio_wr' /mnt/jffs2 "
+                         "2>/dev/null || true").split()
+    except Exception:
+        writers = []
+    if writers:
+        rep.add(g, "scripts here write radio settings", WARN,
+                f"{', '.join(writers)}\n           These can change gain or "
+                f"attenuation underneath any application, including this one. "
+                f"If a measurement below reports the settings moving on their "
+                f"own, this is where to look first.")
 
 
 def test_digital_interface(b, rep, sh):
@@ -1503,6 +1548,7 @@ def main(argv=None):
             host = Board._split(args.uri)[0]
             sh = Shell(host, args.ssh)
             if sh.works():
+                test_board_scripts(rep, sh)
                 test_digital_interface(board, rep, sh)
             else:
                 rep.add("Digital interface (BIST)", "shell access", WARN,

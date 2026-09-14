@@ -123,40 +123,42 @@ pair 0, then asks you to move the loopback to TX2/RX2 and press Enter:
 With one set of attenuators you can only test one pair at a time, which is why
 it prompts rather than assuming. `--channel 1` runs just the second pair.
 
-## A firmware fault this tool found
+## When the attenuator moves on its own
 
-While a TX DMA buffer is streaming, changing the RX gain **occasionally resets
-the transmit attenuation to 10 dB** — the AD9361 driver's probe-time default —
-with no userspace write to cause it.
+If a run reports *"settings changed on their own"*, look at `/mnt/jffs2`
+before you suspect your board.
 
-What is established by measurement:
+That partition is the one writable, persistent thing on a Pluto, and
+`/mnt/jffs2/autorun.sh` runs at every boot. Anything started from there
+survives reflashing the kernel, the device tree and the bitstream, and appears
+nowhere in the firmware source however hard you look. A common helper watches
+the transmit buffer and applies a working gain shortly after a stream starts:
 
-- it never happens with the transmitter idle, only while a buffer streams;
-- nothing in this tool writes that value: every libiio write was logged and
-  correlated against the board's own view of the attenuator, and the write is
-  simply not there;
-- 10 dB is the value `ad9361_setup()` applies from `adi,tx-attenuation-mdB`.
-  Overriding that at runtime through debugfs does *not* change the value that
-  appears, so it is being restored from a copy cached at probe — most likely
-  `tx1_atten_cached`, which `ad9361_tx_mute(phy, 0)` restores and which is
-  seeded while the hardware still holds the device-tree default;
-- it is a race, not a threshold: a different single gain value triggers it on
-  each run.
+```sh
+ACTIVE_GAIN="-10.000000"
+# on buffer/enable 0 -> 1:  sleep 2; iio_attr -o -c ad9361-phy voltage0 hardwaregain $ACTIVE_GAIN
+# on buffer/enable 1 -> 0:  iio_attr ... hardwaregain -89.750000
+```
 
-**It matters because of the PA.** Ten dB of attenuation is roughly +13 dBm on
-the transmit port, on a board whose receive port is rated to +2.5 dBm. So:
-keep a pad in any loopback, and do not assume the attenuator stays where you
-put it while transmitting.
+Useful, and a genuinely confusing thing to debug: it fires once per stream,
+only while streaming, a couple of seconds after the fact, and at a value
+nothing in the kernel writes. It also **silently overrides whatever gain your
+application set** — which matters with the PGA-102+ fitted, where 10 dB of
+attenuation is roughly +13 dBm at the SMA against a +2.5 dBm receive port.
 
-Every measurement here re-reads the gain and attenuation, re-asserts them if
-they have moved, and reports how often that happened — so this corrupts
-nothing in the results, and shows up in the report as a warning naming the
-fault rather than as a mysteriously wrong number.
+Two things here address it. Every measurement re-reads the gain and
+attenuation, restores them if they have moved, and counts it — so results stay
+correct and the interference is reported rather than silently folded into a
+number. And `--ssh` lists `autorun.sh` and flags any script under `/mnt/jffs2`
+that writes radio settings, up front:
 
-The likely fix is to make the device-tree default the muted value
-(`adi,tx-attenuation-mdB = <89750>`), so that a stale cache restores silence
-instead of +13 dBm. That is a firmware change and a reflash, so it is not
-applied here.
+```
+== Board customisation ==
+  info   /mnt/jffs2/autorun.sh runs at every boot
+         /mnt/jffs2/tx_watchdog.sh &
+  WARN   scripts here write radio settings
+         /mnt/jffs2/tx_watchdog.sh
+```
 
 ## Baselines
 
